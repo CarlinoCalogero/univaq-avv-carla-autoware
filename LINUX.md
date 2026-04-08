@@ -12,33 +12,21 @@ To bridge this gap, we create a continuous loop:
 5. **The Muscle**: Autoware spits out an Ackermann steering command, which is sent back across the bridge to physically turn the wheels of the car in CARLA.
 
 ## Prerequisites (The Setup)
-Before touching the code, ensure you have the following installed on your Windows machine:
-1. **WSL2 (Ubuntu)**: Install via PowerShell (`wsl --install -d Ubuntu-22.04`).
-2. **Docker Desktop**: Install and ensure the WSL2 integration is enabled in its settings.
-
-### Enable WS2 integration
-1. Open Docker Desktop.
-2. Click the Gear icon (`Settings`) in the top right.
-3.  Go to `Resources` > `WSL Integration`.
-4. Make sure `Enable integration with my default WSL distro` is checked, AND explicitly flip the switch on for your specific `Ubuntu-22.04` distro in the list below it.
-5. Click `Apply & restart`.
+Before touching the code, ensure you have the following installed on your Ubuntu machine:
+1. **Ubuntu 22.04 LTS**: Native installation.
+2. **Docker Engine**: Installed natively for Linux (Not Docker Desktop).
+3. **NVIDIA Container Toolkit**: Crucial for allowing Docker to use your GPU for Autoware's neural networks.
+4. **Proprietary NVIDIA Drivers**: Installed and verified via nvidia-smi.
 
 ## Phase 1: First-Time Setup & Build
 *If you have already built Autoware and the Bridge once, you can skip to Phase 2.*
 
 ### Step 1: Set up the CARLA ROS Bridge
 The bridge translates CARLA's environment into ROS 2.
-1. Open your Ubuntu terminal as root by writing on PowerShell
+1. Open a new terminal.
+2. Navigate to your workspace folder (replace PathToFolder with your actual path):
 ```bash
-wsl -d Ubuntu-22.04 -u root
-```
-Once the black terminal window opens, if you aren't sure which version you are in, just run:
-```bash
-lsb_release -r
-```
-2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
-```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/PathToFolder
 ```
 3. Before you run the script, we need to strip out those invisible Windows carriage returns so Linux can read it cleanly. Run this exact command in your Ubuntu terminal:
 ```bash
@@ -57,13 +45,10 @@ source setup_bridge.sh
 
 ### Step 2: Deploy & Compile Autoware
 Now we deploy the autonomous brain.
-1. Start the Docker engine and open a brand new Ubuntu WSL2 terminal
+1. Open a new terminal.
+2. Navigate to your workspace folder (replace PathToFolder with your actual path):
 ```bash
-wsl -d Ubuntu-22.04 -u root
-```
-2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
-```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/PathToFolder
 ```
 3. Before you run the script, we need to strip out those invisible Windows carriage returns so Linux can read it cleanly. Run this exact command in your Ubuntu terminal:
 ```bash
@@ -81,7 +66,7 @@ source launch_autoware.sh
 
 5. Navigate to the Shared Folder
 
-First, let's make sure you are in the workspace folder that is magically linked to your Windows computer.
+First, let's make sure you are in the workspace folder that is linked to your Ubuntu machine.
 
 ```bash
 cd /workspace
@@ -95,7 +80,7 @@ Autoware is massive, so it's split across hundreds of repositories. We will use 
 mkdir -p src
 ```
 
-7. Because your `/workspace` folder is a shared volume between your Windows host (or WSL) and the Docker container, the file ownership gets a little mixed up. The Docker container is running as `root`, but it sees that the files were created by your normal Windows/Ubuntu user. Git spots this mismatch and refuses to touch the files because it thinks it might be a security risk ("dubious ownership"). We can use a wildcard (*) to tell Git to trust everything inside this specific Docker container. Run this single command inside your Docker terminal:
+7. Because your `/workspace` folder is a shared volume between your Ubuntu host and the Docker container, the file ownership gets a little mixed up. The Docker container is running as `root`, but it sees that the files were created by your normal Ubuntu user. Git spots this mismatch and refuses to touch the files because it thinks it might be a security risk ("dubious ownership"). We can use a wildcard (*) to tell Git to trust everything inside this specific Docker container. Run this single command inside your Docker terminal:
 ```bash
 git config --global --add safe.directory "*"
 ```
@@ -146,63 +131,52 @@ You must **always** spawn the physical vehicle in CARLA (Step 3) before you laun
 
 **The Golden Rule:** Start the World ➔ Start the Bridge ➔ Spawn the Car ➔ Boot the Brain.
 
-### Step1: Launch the World & Recorder (Windows)
-1. Open PowerShell, navigate to your CARLA installation folder, and launch the engine. It's best to force it to use a low-quality rendering mode if your GPU is going to be strained by running Autoware simultaneously:
+### Step1: Launch the World & Recorder
+1. Open a terminal, navigate to your CARLA installation folder, and launch the engine natively. It's best to force it to use a low-quality rendering mode if your GPU is going to be strained by running Autoware simultaneously:
 ```bash
-.\CarlaUE4.exe -quality-level=Low -carla-rpc-port=2000 -dx11 -windowed -ResX=800 -ResY=600
+./CarlaUE4.sh -quality-level=Low -carla-rpc-port=2000 -opengl -windowed -ResX=800 -ResY=600
 ```
-2. Open a second PowerShell window, navigate to your integration folder, and start the automated recorder. This saves the physics snapshot so you can replay the exact scenario later:
+2. Open a second terminal, navigate to your integration folder, and start the automated recorder. This saves the physics snapshot so you can replay the exact scenario later:
 ```python
 python3 start_simulation.py --host 127.0.0.1 --port 2000 --log_name run_001.log
 ```
 (*Note: Press `Ctrl+C` in this window when you are done to safely save the log*).
 
-### Step 2: Launch the Bridge (WSL Terminal 1)
-1. Check your ip with `ipconfig` command in windows
-2. Open a WSL terminal
-```bash
-wsl -d Ubuntu-22.04 -u root
-```
-3. Source your bridge
+### Step 2: Launch the Bridge (Terminal 3)
+1. Open a new terminal
+2. Source your bridge
 ```bash
 source /opt/ros/humble/setup.bash
 ```
 ```bash
 source $HOME/carla_ws/install/setup.bash
 ```
-4. Connect to CARLA (Update the host IP to your Windows IPv4 address):
+3. Connect to CARLA
 ```bash
-ros2 launch carla_ros_bridge carla_ros_bridge.launch.py host:=192.168.1.12 port:=2000 timeout:=60
+ros2 launch carla_ros_bridge carla_ros_bridge.launch.py host:=127.0.0.1 port:=2000 timeout:=60
 ```
 
-### Step 3: Spawn the Vehicle (WSL Terminal 2)
+### Step 3: Spawn the Vehicle (Terminal 4)
 The bridge is running, but the world is empty. You must spawn a car and its sensors:
-1. Check your ip with `ipconfig` command in windows
-2. Open a WSL terminal
-```bash
-wsl -d Ubuntu-22.04 -u root
-```
-3. Source your bridge
+1. Open a new terminal
+2. Source your bridge
 ```bash
 source /opt/ros/humble/setup.bash
 ```
 ```bash
 source $HOME/carla_ws/install/setup.bash
 ```
-4. Spawn a car and its sensors
+3. Spawn a car and its sensors
 ```bash
 ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py role_name:=ego_vehicle spawn_point:="100,200,2,0,0,0"
 ```
 
-### Step 4: Boot the Brain & Integrate (WSL Terminal 3 -> Docker)
+### Step 4: Boot the Brain & Integrate (Terminal 5 -> Docker)
 Run your `launch_autoware.sh` script to enter the Docker container. Once inside, launch your integration:
-1. Open a WSL terminal
+1. Open a new terminal.
+2. Navigate to your workspace folder (replace with your actual path):
 ```bash
-wsl -d Ubuntu-22.04 -u root
-```
-2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
-```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/PathToFolder
 ```
 3. Boot the Docker container
 ```bash
@@ -238,12 +212,12 @@ ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py role_name:=e
 ```bash
 ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle_1
 ```
-4. **Boot Agent 2**: Open a completely new WSL terminal, run `launch_autoware.sh` to start a second Docker container, and launch for Car 2:
+4. **Boot Agent 2**: Open a completely new terminal, run `launch_autoware.sh` to start a second Docker container, and launch for Car 2:
 ```bash
 ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle_2
 ```
 
 # Where are my logs?
 This template generates two types of logs automatically:
-* **CARLA Simulation Snapshots**: These `.log` files contain the physical state of the world (positions of all cars, pedestrians, traffic lights). They are saved on your Windows machine in your CARLA installation folder under `CarlaUE4/Saved/`. Use `client.replay_file("run_001.log")` to watch them in the simulator.
+* **CARLA Simulation Snapshots**: These `.log` files contain the physical state of the world (positions of all cars, pedestrians, traffic lights). They are saved on your Ubuntu machine in your CARLA installation folder under `CarlaUE4/Saved/`. Use `client.replay_file("run_001.log")` to watch them in the simulator.
 * **Autoware ADAS Bags**: These are raw ROS 2 data logs containing the LiDAR point clouds, camera feeds, and control commands generated by Autoware. They are saved directly to your shared `/workspace` folder as a directory (e.g., `/workspace/log_ego_vehicle_1`).
