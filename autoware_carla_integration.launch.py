@@ -5,7 +5,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    # 1. Define variables so the template can be reused for Agent 1, Agent 2, etc.
+    # Define variables so the template can be reused for Agent 1, Agent 2, etc.
     vehicle_name = LaunchConfiguration('vehicle_name')
     
     declare_vehicle_name = DeclareLaunchArgument(
@@ -14,7 +14,7 @@ def generate_launch_description():
         description='The role_name of the vehicle in CARLA (e.g., ego_vehicle_1)'
     )
 
-    # 2. Automated Autoware ADAS Logging (Rosbag)
+    # Automated Autoware ADAS Logging (Rosbag)
     # This automatically records key perception and control topics.
     record_adas = ExecuteProcess(
         cmd=[
@@ -27,7 +27,7 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 3. Dynamic Node Mapping
+    # Dynamic Node Mapping
     lidar_relay = Node(
         package='topic_tools',
         executable='relay',

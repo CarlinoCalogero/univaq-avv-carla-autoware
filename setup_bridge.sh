@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-# PART 1: Install ROS2 Humble Desktop & Tools
+# Install ROS2 Humble Desktop & Tools
 # ==========================================
 if [ ! -f "/opt/ros/humble/setup.bash" ]; then
     echo "ROS2 Humble not found. Installing..."
@@ -27,13 +27,13 @@ sudo rosdep init || true
 rosdep update
 
 # ==========================================
-# PART 1.5: Install CARLA Python API
+# Install CARLA Python API
 # ==========================================
 echo "Installing CARLA Python API (0.9.16)..."
 pip3 install carla==0.9.16
 
 # ==========================================
-# PART 2: Setup CARLA ROS Bridge
+# Setup CARLA ROS Bridge
 # ==========================================
 
 source /opt/ros/humble/setup.bash
@@ -54,7 +54,6 @@ echo "Applying Humble compatibility fixes safely..."
 grep -rl "tf2_eigen/tf2_eigen.h" $HOME/carla_ws/src/ros-bridge/ | xargs -r sed -i 's/tf2_eigen\.h>/tf2_eigen\.hpp>/g'
 grep -rl "tf2_geometry_msgs/tf2_geometry_msgs.h" $HOME/carla_ws/src/ros-bridge/ | xargs -r sed -i 's/tf2_geometry_msgs\.h>/tf2_geometry_msgs\.hpp>/g'
 
-# NEW FIX: Bypass the hardcoded version check
 echo "Patching CARLA ROS Bridge hardcoded version check (0.9.13 -> 0.9.16)..."
 grep -rl "0.9.13" $HOME/carla_ws/src/ros-bridge/ | xargs -r sed -i 's/0.9.13/0.9.16/g'
 
