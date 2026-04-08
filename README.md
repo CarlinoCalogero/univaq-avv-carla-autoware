@@ -53,6 +53,8 @@ source setup_bridge.sh
 ```
 *This installs ROS 2 Humble, the CARLA Python API, and builds the bridge workspace.*
 
+5. Close the terminal
+
 ### Step 2: Deploy & Compile Autoware
 Now we deploy the autonomous brain.
 1. Start the Docker engine and open a brand new Ubuntu WSL2 terminal
@@ -93,13 +95,18 @@ Autoware is massive, so it's split across hundreds of repositories. We will use 
 mkdir -p src
 ```
 
-Import and FORCE sync all repositories to the correct versions
+7. Because your `/workspace` folder is a shared volume between your Windows host (or WSL) and the Docker container, the file ownership gets a little mixed up. The Docker container is running as `root`, but it sees that the files were created by your normal Windows/Ubuntu user. Git spots this mismatch and refuses to touch the files because it thinks it might be a security risk ("dubious ownership"). We can use a wildcard (*) to tell Git to trust everything inside this specific Docker container. Run this single command inside your Docker terminal:
+```bash
+git config --global --add safe.directory "*"
+```
+
+8. Import and FORCE sync all repositories to the correct versions
 
 ```bash
 vcs import src --recursive --force < repositories/autoware.repos
 ```
 
-7. Install Hidden Dependencies
+9. Install Hidden Dependencies
 
 Even though the Docker container comes with a lot of tools pre-installed, those hundreds of packages you just downloaded might need a few extra specific libraries to compile properly.
 
@@ -107,25 +114,25 @@ Even though the Docker container comes with a lot of tools pre-installed, those 
 sudo apt update
 ```
 
-8. Fix potential permission issues with rosdep in Docker
+10. Fix potential permission issues with rosdep in Docker
 
 ```bash
 sudo rosdep fix-permissions
 ```
 
-9. Update the package
+11. Update the package
 
 ```bash
 rosdep update
 ```
 
-10. Install all missing libraries for the packages in /src
+12. Install all missing libraries for the packages in /src
 
 ```bash
 rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO
 ```
 
-11. Build the entire autonomous driving stack.
+13. Build the entire autonomous driving stack.
 
 Building the whole stack takes a long time. To make this "reboot-friendly," we use `--continue-on-error`. If the build fails halfway through, you can run it again and it will pick up exactly where it left off instead of starting from zero.
 
@@ -184,7 +191,7 @@ source $HOME/carla_ws/install/setup.bash
 ```
 4. Spawn a car and its sensors
 ```bash
-ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py role_name:=ego_vehicle
+ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py role_name:=ego_vehicle spawn_point:="100,200,2,0,0,0"
 ```
 
 ### Step 4: Boot the Brain & Integrate (WSL Terminal 3 -> Docker)
