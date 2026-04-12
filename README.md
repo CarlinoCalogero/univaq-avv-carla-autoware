@@ -211,7 +211,7 @@ source $HOME/carla_ws/install/setup.bash
 ```
 4. Connect to CARLA (Update the host IP to your Windows IPv4 address):
 ```bash
-ros2 launch carla_ros_bridge carla_ros_bridge.launch.py host:=192.168.1.12 port:=2000 timeout:=60
+ros2 launch carla_ros_bridge carla_ros_bridge.launch.py host:=192.168.1.12 port:=2000 timeout:=60 synchronous_mode:=False
 ```
 
 ### Step 3: Spawn the Vehicle (WSL Terminal 2)
