@@ -6,9 +6,6 @@ if ! command -v xhost &> /dev/null; then
     sudo apt update && sudo apt install x11-xserver-utils -y
 fi
 
-# Navigate to your workspace
-cd /mnt/c/Users/calog/Desktop/univaq-avv-carla-autoware/
-
 # Clone Autoware ONLY if the folder does not exist
 if [ ! -d "autoware" ]; then
     echo "Cloning Autoware..."

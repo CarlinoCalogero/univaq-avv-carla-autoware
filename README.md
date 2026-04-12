@@ -140,6 +140,33 @@ Building the whole stack takes a long time. To make this "reboot-friendly," we u
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error
 ```
 
+### Step 3: Create the python environment
+Since we have custom utility scripts (like the automated recorder and the `find_car.py` teleport script), it is best practice to run them in an isolated Python environment. **Note: This project strictly requires Python 3.12.**
+
+*(Ubuntu 22.04 Default Note: If you do not have Python 3.12 installed, you can get it by running: `sudo add-apt-repository ppa:deadsnakes/ppa && sudo apt update && sudo apt install python3.12 python3.12-venv -y`)*
+
+1. Open a brand new Ubuntu WSL2 terminal
+```bash
+wsl -d Ubuntu-22.04 -u root
+```
+2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+```bash
+cd /mnt/c/Users/YourUsername/PathToFolder
+```
+3. Create a new virtual environment specifically using Python 3.12:
+```bash
+python3.12 -m venv .venv
+```
+4. Activate the environment:
+```bash
+source .venv/bin/activate
+```
+5. Install the required Python packages:
+```bash
+pip install -r requirements.txt
+```
+*(Note: From now on, whenever you want to run a custom Python script in this project, just make sure to run source .venv/bin/activate first to wake up your environment!)*
+
 ## Phase 2: Running the Simulation (Everyday Workflow)
 ### CRITICAL ORDER OF OPERATIONS: The Body Before The Brain
 You must **always** spawn the physical vehicle in CARLA (Step 3) before you launch the Autoware integration (Step 4). If you launch Autoware first, it will fail to find the car's sensor topics and the integration will crash.
@@ -149,11 +176,23 @@ You must **always** spawn the physical vehicle in CARLA (Step 3) before you laun
 ### Step1: Launch the World & Recorder (Windows)
 1. Open PowerShell, navigate to your CARLA installation folder, and launch the engine. It's best to force it to use a low-quality rendering mode if your GPU is going to be strained by running Autoware simultaneously:
 ```bash
-.\CarlaUE4.exe -quality-level=Low -carla-rpc-port=2000 -dx11 -windowed -ResX=800 -ResY=600
+.\CarlaUE4.exe -carla-rpc-port=2000 -windowed -ResX=800 -ResY=600
 ```
-2. Open a second PowerShell window, navigate to your integration folder, and start the automated recorder. This saves the physics snapshot so you can replay the exact scenario later:
+2. Open a brand new Ubuntu WSL2 terminal
+```bash
+wsl -d Ubuntu-22.04 -u root
+```
+3. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+```bash
+cd /mnt/c/Users/YourUsername/PathToFolder
+```
+4. Activate the environment:
+```bash
+source .venv/bin/activate
+```
+5. start the automated recorder. This saves the physics snapshot so you can replay the exact scenario later (Update the host IP to your Windows IPv4 address):
 ```python
-python3 start_simulation.py --host 127.0.0.1 --port 2000 --log_name run_001.log
+python3 start_simulation.py --host 192.168.1.12 --port 2000 --log_name run_001.log
 ```
 (*Note: Press `Ctrl+C` in this window when you are done to safely save the log*).
 
@@ -191,7 +230,23 @@ source $HOME/carla_ws/install/setup.bash
 ```
 4. Spawn a car and its sensors
 ```bash
-ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py role_name:=ego_vehicle spawn_point:="100,200,2,0,0,0"
+ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=/mnt/c/Users/YOUR_USERNAME/PathToFolder/my_custom_car.json
+```
+5. If you want to find the car, open a brand new Ubuntu WSL2 terminal
+```bash
+wsl -d Ubuntu-22.04 -u root
+```
+6. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+```bash
+cd /mnt/c/Users/YourUsername/PathToFolder
+```
+7. Activate the environment:
+```bash
+source .venv/bin/activate
+```
+8. Run the script
+```bash
+python3 find_car.py --host 192.168.1.12
 ```
 
 ### Step 4: Boot the Brain & Integrate (WSL Terminal 3 -> Docker)
@@ -208,11 +263,15 @@ cd /mnt/c/Users/YourUsername/PathToFolder
 ```bash
 source launch_autoware.sh
 ```
-4. Once inside the Docker container, source the built workspace
+4. Once inside the Docker container, navigate to the workspace and source it
+```bash
+cd /workspace
+```
+5. Source the built workspace
 ```bash
 source install/setup.bash
 ```
-5. Launch the integration
+6. Launch the integration
 ```bash
 ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle
 ```
@@ -227,12 +286,13 @@ Autoware's 3D interface (RViz) will now open. To make the car drive:
 # Advanced: Multi-Agent Workflow
 To run multiple autonomous vehicles interacting with each other, follow the golden rule: **One Docker Container = One Vehicle Brain**.
 1. **Start the World & Bridge** (Follow Steps 1 & 2 above).
-2. **Spawn Multiple Vehicles**: In your spawn terminal, drop two cars at different coordinates with unique names:
+2. **Spawn Multiple Vehicles**: Because spawn coordinates and names are hardcoded in the JSON, you must create a second file (e.g., `my_custom_car_2.json`) with a different `id` (like `ego_vehicle_2`) and different `spawn_point` coordinates so they don't spawn on top of each other! 
+Open two separate WSL terminals, source the bridge, and spawn them:
 ```bash
-ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py role_name:=ego_vehicle_1 spawn_point:="100,200,2,0,0,0"
+ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=/mnt/c/Users/YOUR_USERNAME/PathToFolder/my_custom_car.json
 ```
 ```bash
-ros2 launch carla_spawn_objects carla_example_ego_vehicle.launch.py role_name:=ego_vehicle_2 spawn_point:="110,200,2,0,0,0"
+ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=/mnt/c/Users/YOUR_USERNAME/PathToFolder/my_custom_car_2.json
 ```
 3. **Boot Agent 1**: Open a Docker terminal, source, and launch integration for Car 1:
 ```bash
