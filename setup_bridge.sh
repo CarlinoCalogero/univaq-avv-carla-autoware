@@ -65,7 +65,7 @@ echo "Scanning for missing ROS dependencies..."
 rosdep install --from-paths src --ignore-src -r -y
 
 echo "Building the workspace..."
-colcon build --symlink-install
+colcon build --symlink-install --continue-on-error
 
 source install/setup.bash
 echo "CARLA ROS Bridge setup complete! Ready to launch."

@@ -12,10 +12,10 @@ def main():
     # Connect to CARLA
     print(f"Connecting to CARLA at {args.host}:{args.port}...")
     client = carla.Client(args.host, args.port)
-    client.set_timeout(10.0)
+    client.set_timeout(30.0)
 
     # Start the built-in CARLA recorder
-    print(f"Starting CARLA Recorder. Saving to: {args.log_name}")
+    print(f"Starting CARLA Recorder. File will be saved on the CARLA server (Windows) as: {args.log_name}")
     client.start_recorder(args.log_name)
 
     try:
