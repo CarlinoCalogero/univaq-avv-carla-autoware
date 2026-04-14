@@ -240,6 +240,10 @@ cd ~/projects/univaq-avv-carla-autoware
 ```bash
 python3.12 -m venv .venv
 ```
+*Note: Ubuntu 22.04 ships with Python 3.10 by default. If you get a "command not found" error, install Python 3.12 by running this command first:*
+```bash
+sudo add-apt-repository ppa:deadsnakes/ppa -y && sudo apt update && sudo apt install python3.12 python3.12-venv -y
+```
 4. Activate the environment:
 ```bash
 source .venv/bin/activate
