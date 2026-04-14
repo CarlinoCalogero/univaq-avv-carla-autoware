@@ -267,6 +267,21 @@ The official CARLA-Autoware maps are hosted on the CARLA team's Bitbucket reposi
 projector_type: Local
 ```
 
+### Step 5: Download Autoware AI Models (Artifacts)
+Before running the full autonomous driving stack, Autoware needs to download its pre-trained neural networks (such as the LiDAR CenterPoint model) for its perception modules to function. Without these files, the end-to-end simulator will instantly crash on startup.
+
+1. Ensure you are inside the Docker container terminal and in the workspace directory:
+```bash
+cd /workspace
+```
+2. Run the automated artifact download script (this will take a few minutes depending on your internet connection, as the files are quite large):
+```bash
+./setup-dev-env.sh --download-artifacts
+```
+3. **IMPORTANT - The Password Prompt:** The script uses an automation tool called Ansible. During the installation, it will pause and ask for a `BECOME password:`. Because you are already the root administrator inside the Docker container,** you do not need a password**. Simply press **Enter** to leave it blank and the script will continue.
+
+*Note: This download will take a few minutes depending on your internet connection, as the AI model files are quite large. They will be automatically saved to `/root/autoware_data/` inside the container*
+
 ## Phase 2: Running the Simulation (Everyday Workflow)
 ### CRITICAL ORDER OF OPERATIONS: The Body Before The Brain
 You must **always** spawn the physical vehicle in CARLA (Step 3) before you launch the Autoware integration (Step 4). If you launch Autoware first, it will fail to find the car's sensor topics and the integration will crash.
@@ -393,7 +408,7 @@ cd /workspace && source install/setup.bash
 ```
 5. Launch the main Autoware stack:
 ```bash
-ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle vehicle_launch_pkg:=sample_vehicle_launch sensor_model:=sample_sensor_kit sensor_launch_pkg:=sample_sensor_kit_launch map_path:=/workspace/Town01_map --debug
+ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle vehicle_launch_pkg:=sample_vehicle_launch sensor_model:=sample_sensor_kit sensor_launch_pkg:=sample_sensor_kit_launch map_path:=/workspace/Town01_map
 ```
 6. Command the Vehicle: Autoware's 3D interface (RViz) will now open on your Windows desktop. To make the car drive:
     1. **Localize**: Click "**2D Pose Estimate**" in the top toolbar and drag on the map where the car is currently sitting to align the LiDAR points.
