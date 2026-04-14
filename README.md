@@ -23,8 +23,40 @@ Before touching the code, ensure you have the following installed on your Window
 4. Make sure `Enable integration with my default WSL distro` is checked, AND explicitly flip the switch on for your specific `Ubuntu-22.04` distro in the list below it.
 5. Click `Apply & restart`.
 
+## CRITICAL: Performance Warning (Filesystem Location)
+WSL2 is incredibly fast, but only if your files live inside the Linux Filesystem. If your project folder is currently on your Windows `C:\` drive (e.g., Desktop or Documents), Autoware will take 10+ hours to compile and the simulation will lag.
+
+**You must move this folder to the Linux home directory before starting Phase 1.**
+
+### How to move the folder to the "Fast Lane":
+1. Open your Ubuntu terminal.
+```bash
+wsl -d Ubuntu-22.04 -u root
+```
+2. Create a projects directory:
+```bash
+mkdir -p ~/projects
+```
+3. Move the folder from Windows to Linux (Replace YourUsername with your actual Windows name):
+```bash
+# Example assuming the folder is on your Windows Desktop
+mv /mnt/c/Users/<YourWindowsUser>/Desktop/univaq-avv-carla-autoware ~/projects/
+```
+4. Navigate to the new location:
+```bash
+cd ~/projects/univaq-avv-carla-autoware
+```
+*Note: To edit files from Windows, type `\\wsl$\Ubuntu-22.04\home\` into your Windows File Explorer address bar. You can use VS Code or Notepad here just like a normal folder, but it will run at native Linux speeds.*
+
 ## Phase 1: First-Time Setup & Build
 *If you have already built Autoware and the Bridge once, you can skip to Phase 2.*
+
+### Step 0: Set Permissions
+Because we moved the files from Windows, we need to tell Linux that the setup scripts are allowed to execute.
+1. Run this command inside your project folder:
+```bash
+chmod +x *.sh
+```
 
 ### Step 1: Set up the CARLA ROS Bridge
 The bridge translates CARLA's environment into ROS 2.
@@ -36,9 +68,9 @@ Once the black terminal window opens, if you aren't sure which version you are i
 ```bash
 lsb_release -r
 ```
-2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+2. Navigate to your folder by typing this command:
 ```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/projects/univaq-avv-carla-autoware
 ```
 3. Before you run the script, we need to strip out those invisible Windows carriage returns so Linux can read it cleanly. Run this exact command in your Ubuntu terminal:
 ```bash
@@ -61,9 +93,9 @@ Now we deploy the autonomous brain.
 ```bash
 wsl -d Ubuntu-22.04 -u root
 ```
-2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+2. Navigate to your folder by typing this command :
 ```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/projects/univaq-avv-carla-autoware
 ```
 3. Before you run the script, we need to strip out those invisible Windows carriage returns so Linux can read it cleanly. Run this exact command in your Ubuntu terminal:
 ```bash
@@ -165,9 +197,9 @@ Since we have custom utility scripts (like the automated recorder and the `find_
 ```bash
 wsl -d Ubuntu-22.04 -u root
 ```
-2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+2. Navigate to your folder by typing this command :
 ```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/projects/univaq-avv-carla-autoware
 ```
 3. Create a new virtual environment specifically using Python 3.12:
 ```bash
@@ -211,9 +243,9 @@ You must **always** spawn the physical vehicle in CARLA (Step 3) before you laun
 ```bash
 wsl -d Ubuntu-22.04 -u root
 ```
-3. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+3. Navigate to your folder by typing this command :
 ```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/projects/univaq-avv-carla-autoware
 ```
 4. Activate the environment:
 ```bash
@@ -259,15 +291,15 @@ source $HOME/carla_ws/install/setup.bash
 ```
 4. Spawn a car and its sensors
 ```bash
-ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=/mnt/c/Users/YOUR_USERNAME/PathToFolder/my_custom_car.json
+ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=$HOME/projects/univaq-avv-carla-autoware/my_custom_car.json
 ```
 5. If you want to find the car, open a brand new Ubuntu WSL2 terminal
 ```bash
 wsl -d Ubuntu-22.04 -u root
 ```
-6. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+6. Navigate to your folder by typing this command :
 ```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/projects/univaq-avv-carla-autoware
 ```
 7. Activate the environment:
 ```bash
@@ -284,9 +316,9 @@ Run your `launch_autoware.sh` script to enter the Docker container. Once inside,
 ```bash
 wsl -d Ubuntu-22.04 -u root
 ```
-2. Navigate to your folder by typing this command (replace YourUsername with your actual Windows username and PathToFolder to your actual path to this folder):
+2. Navigate to your folder by typing this command :
 ```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/projects/univaq-avv-carla-autoware
 ```
 3. Boot the Docker container
 ```bash
@@ -315,7 +347,7 @@ wsl -d Ubuntu-22.04 -u root
 ```
 2. Navigate to your folder (replace with your actual paths):
 ```bash
-cd /mnt/c/Users/YourUsername/PathToFolder
+cd ~/projects/univaq-avv-carla-autoware
 ```
 3. Enter the Docker container:
 ```bash
@@ -329,9 +361,9 @@ cd /workspace
 ```bash
 source install/setup.bash
 ```
-6. Launch the main Autoware stack (update `map_path` to your actual CARLA map location):
+6. Launch the main Autoware stack:
 ```bash
-ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit map_path:=/workspace/Town01_map
+ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle vehicle_launch_pkg:=sample_vehicle_launch sensor_model:=sample_sensor_kit sensor_launch_pkg:=sample_sensor_kit_launch map_path:=/workspace/Town01_map --debug
 ```
 7. Command the Vehicle: Autoware's 3D interface (RViz) will now open on your screen! To make the car drive:
     1. **Localize**: Click "**2D Pose Estimate**" in the top toolbar and drag on the map where the car is currently sitting to align the LiDAR points.
@@ -344,10 +376,10 @@ To run multiple autonomous vehicles interacting with each other, follow the gold
 2. **Spawn Multiple Vehicles**: Because spawn coordinates and names are hardcoded in the JSON, you must create a second file (e.g., `my_custom_car_2.json`) with a different `id` (like `ego_vehicle_2`) and different `spawn_point` coordinates so they don't spawn on top of each other! 
 Open two separate WSL terminals, source the bridge, and spawn them:
 ```bash
-ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=/mnt/c/Users/YOUR_USERNAME/PathToFolder/my_custom_car.json
+ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=$HOME/projects/univaq-avv-carla-autoware/my_custom_car.json
 ```
 ```bash
-ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=/mnt/c/Users/YOUR_USERNAME/PathToFolder/my_custom_car_2.json
+ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=$HOME/projects/univaq-avv-carla-autoware/my_custom_car_2.json
 ```
 3. **Boot Agent 1**: Open a Docker terminal, source, and launch integration for Car 1:
 ```bash
