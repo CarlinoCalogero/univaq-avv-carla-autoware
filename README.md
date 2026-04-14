@@ -191,7 +191,7 @@ The official CARLA-Autoware maps are hosted on the CARLA team's Bitbucket reposi
 4. Rename them exactly like this:
     * Rename `Town01.pcd` ➔ `pointcloud_map.pcd`
     * Rename `Town01.osm` ➔ `lanelet2_map.osm`
-5. **CRITICAL:** Inside your `Town01_map` folder, create if needed (the repository already has it inside the `Town01_map` folder) a new text file named exactly `map_projector_info.yaml`. Open it, paste the following text exactly, and save it:
+5. Check your `Town01_map` folder for a file named `map_projector_info.yaml` (it should already be included in this template repository). If it is missing, create a new text file with that exact name, open it, and paste the following text:
 ```yaml
 projector_type: Local
 ```
