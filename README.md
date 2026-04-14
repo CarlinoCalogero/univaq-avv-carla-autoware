@@ -376,7 +376,7 @@ To run multiple autonomous vehicles interacting with each other, follow the gold
 2. **Spawn Multiple Vehicles**: Because spawn coordinates and names are hardcoded in the JSON, you must create a second file (e.g., `my_custom_car_2.json`) with a different `id` (like `ego_vehicle_2`) and different `spawn_point` coordinates so they don't spawn on top of each other! 
 Open two separate WSL terminals, source the bridge, and spawn them:
 ```bash
-ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=$HOME/projects/univaq-avv-carla-autoware/my_custom_car.json
+ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=$HOME/projects/univaq-avv-carla-autoware/my_custom_car_2.json
 ```
 ```bash
 ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=$HOME/projects/univaq-avv-carla-autoware/my_custom_car_2.json
