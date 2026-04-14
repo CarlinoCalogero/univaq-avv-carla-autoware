@@ -183,6 +183,19 @@ pip install -r requirements.txt
 ```
 *(Note: From now on, whenever you want to run a custom Python script in this project, just make sure to run source .venv/bin/activate first to wake up your environment!)*
 
+### Step 4: Download the map for Autoware
+The official CARLA-Autoware maps are hosted on the CARLA team's Bitbucket repository.
+1. Go to this link [CARLA Autoware Contents (Maps)](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/)
+2. Go into `point_cloud_maps` -> click `Town01.pcd` -> click the three dots in the top right and select "Download" to download it inside the folder `Town01_map`
+3. Go back, navigate to `vector_maps/lanelet2` -> click `Town01.osm` -> download it inside the folder `Town01_map`.
+4. Rename them exactly like this:
+    * Rename `Town01.pcd` ➔ `pointcloud_map.pcd`
+    * Rename `Town01.osm` ➔ `lanelet2_map.osm`
+5. **CRITICAL:** Inside your `Town01_map` folder, create if needed (the repository already has it inside the `Town01_map` folder) a new text file named exactly `map_projector_info.yaml`. Open it, paste the following text exactly, and save it:
+```yaml
+projector_type: Local
+```
+
 ## Phase 2: Running the Simulation (Everyday Workflow)
 ### CRITICAL ORDER OF OPERATIONS: The Body Before The Brain
 You must **always** spawn the physical vehicle in CARLA (Step 3) before you launch the Autoware integration (Step 4). If you launch Autoware first, it will fail to find the car's sensor topics and the integration will crash.
