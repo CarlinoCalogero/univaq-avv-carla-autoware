@@ -294,6 +294,11 @@ cd /workspace
 
 *Note: This download will take a few minutes depending on your internet connection, as the AI model files are quite large. They will be automatically saved to `/root/autoware_data/` inside the container*
 
+5. **Make the Models Permanent:** By default, the downloaded models are saved to `/root/autoware_data/`, which gets erased when Docker closes. Move them to your permanent workspace folder so you only have to download them once:
+```bash
+mv /root/autoware_data /workspace/autoware_data
+```
+
 ## Phase 2: Running the Simulation (Everyday Workflow)
 ### CRITICAL ORDER OF OPERATIONS: The Body Before The Brain
 You must **always** spawn the physical vehicle in CARLA (Step 3) before you launch the Autoware integration (Step 4). If you launch Autoware first, it will fail to find the car's sensor topics and the integration will crash.
@@ -418,14 +423,62 @@ source launch_autoware.sh
 ```bash
 cd /workspace && source install/setup.bash
 ```
-5. Launch the main Autoware stack:
+5. Link your permanent AI models:
+```bash
+ln -s /workspace/autoware_data /root/autoware_data
+```
+6. Launch the main Autoware stack:
 ```bash
 ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle vehicle_launch_pkg:=sample_vehicle_launch sensor_model:=sample_sensor_kit sensor_launch_pkg:=sample_sensor_kit_launch map_path:=/workspace/Town01_map
 ```
-6. Command the Vehicle: Autoware's 3D interface (RViz) will now open on your Windows desktop. To make the car drive:
-    1. **Localize**: Click "**2D Pose Estimate**" in the top toolbar and drag on the map where the car is currently sitting to align the LiDAR points.
-    2. **Route**: Click "**2D Goal Pose**" and click a destination on the road. Autoware will draw a trajectory line.
-    3. **Drive**: In the Autoware State panel, click "**Engage**" (or Autonomous mode). The car will begin driving in CARLA!
+7. Command the Vehicle: Autoware's 3D interface (RViz) will now open on your Windows desktop. To make the car drive, you must Localize it, Route it, and Engage it.
+
+**A. Localize the Vehicle (The Bulletproof Way)**
+CARLA and Autoware use different coordinate systems. To perfectly align the car on the map without guessing, use the pose extractor script:
+1. Open a completely new WSL2 terminal (do NOT use a Docker terminal).
+```bash
+wsl -d Ubuntu-22.04 -u root
+```
+2. Navigate to your project and :
+```bash
+cd ~/projects/univaq-avv-carla-autoware
+```
+3. Activate the Python environment:
+```bash
+source .venv/bin/activate
+```
+4. Run the script to extract the exact coordinates (update the IP to your Windows IPv4 address):
+```bash
+python3 get_exact_pose.py --host 192.168.1.12
+```
+5. The script will output a massive `ros2 topic pub /initialpose...` command. Copy that *entire* command.
+6. Open a completely new WSL2 terminal:
+```bash
+wsl -d Ubuntu-22.04 -u root
+```
+7. Navigate to your folder:
+```bash
+cd ~/projects/univaq-avv-carla-autoware
+```
+8. Enter the Docker container (this starts a second container session):
+```bash
+source launch_autoware.sh
+```
+9. Navigate to the workspace and source it:
+```bash
+cd /workspace && source install/setup.bash
+```
+10. Paste the `ros2 topic pub /initialpose...` command and press `Enter`. In RViz, your 3D car model will instantly snap onto the map, and the Autoware State Panel will change to **Localization | OK**.
+
+*(Fallback Method: If you prefer the manual way, click "2D Pose Estimate" in the top RViz toolbar, then click and drag on the road roughly where the car is sitting in CARLA).*
+
+**B. Route the Vehicle**
+1. Click "**2D Goal Pose**" in the top RViz toolbar.
+2. Click and drag on a valid road lane ahead of the vehicle to set the destination and heading. Autoware will calculate and draw a colorful trajectory line.
+
+**C. Drive**
+1. In the Autoware State panel on the left, click the "**Accept Start**" button.
+2. Toggle the **Autoware Control** switch at the very top of the panel to **Auto**. The car will begin driving in CARLA!
 
 # Advanced: Multi-Agent Workflow
 To run multiple autonomous vehicles interacting with each other, follow the golden rule: **One Docker Container = One Vehicle Brain**.
