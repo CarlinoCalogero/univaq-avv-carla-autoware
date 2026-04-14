@@ -276,9 +276,10 @@ cd /workspace
 ```
 2. Run the automated artifact download script (this will take a few minutes depending on your internet connection, as the files are quite large):
 ```bash
-./setup-dev-env.sh --download-artifacts
+./setup-dev-env.sh --download-artifacts --no-nvidia
 ```
 3. **IMPORTANT - The Password Prompt:** The script uses an automation tool called Ansible. During the installation, it will pause and ask for a `BECOME password:`. Because you are already the root administrator inside the Docker container,** you do not need a password**. Simply press **Enter** to leave it blank and the script will continue.
+4. **IMPORTANT - The NVIDIA Prompt:** The script might warn you that some components depend on CUDA/TensorRT and ask if you want to install NVIDIA libraries (`Install NVIDIA libraries? [y/N]:`). **You must type `N` and press Enter**. Your Docker container is already receiving GPU access directly from Windows; attempting to install Linux-specific drivers here will cause the installation to crash.
 
 *Note: This download will take a few minutes depending on your internet connection, as the AI model files are quite large. They will be automatically saved to `/root/autoware_data/` inside the container*
 
