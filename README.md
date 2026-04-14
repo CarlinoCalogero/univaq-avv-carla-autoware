@@ -256,15 +256,26 @@ pip install -r requirements.txt
 
 ### Step 4: Download the Map for Autoware
 The official CARLA-Autoware maps are hosted on the CARLA team's Bitbucket repository.
-1. Go to this link: [CARLA Autoware Contents (Maps)](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/)
-2. Go into `point_cloud_maps` → click `Town01.pcd` → click the three dots in the top right and select "Download" to download it inside the folder `Town01_map`.
-3. Go back, navigate to `vector_maps/lanelet2` → click `Town01.osm` → download it inside the folder `Town01_map`.
-4. Rename them exactly like this:
+**CRITICAL:** The map folder must be placed *inside* the `autoware` directory so the Docker container can see it.
+1. Navigate into your autoware folder and create the map directory:
+```bash
+cd ~/projects/univaq-avv-carla-autoware/autoware
+mkdir Town01_map
+```
+2. Go to this link: [CARLA Autoware Contents (Maps)](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/)
+3. Go into `point_cloud_maps` → click `Town01.pcd` → click the three dots in the top right and select "Download" to download it inside your new `autoware/Town01_map` folder.
+4. Go back, navigate to `vector_maps/lanelet2` → click `Town01.osm` → download it inside the same `autoware/Town01_map` folder.
+5. Rename them exactly like this:
     * Rename `Town01.pcd` ➔ `pointcloud_map.pcd`
     * Rename `Town01.osm` ➔ `lanelet2_map.osm`
-5. Check your `Town01_map` folder for a file named `map_projector_info.yaml` (it should already be included in this template repository). If it is missing, create a new text file with that exact name, open it, and paste the following:
+6. Check your `Town01_map` folder for a file named `map_projector_info.yaml` (it should already be included in this template repository). If it is missing, create a new text file with that exact name, open it, and paste the following:
 ```yaml
 projector_type: Local
+```
+
+*Troubleshooting: If you accidentally downloaded the map to the main project folder instead of the autoware folder, you can move it by running:*
+```bash
+mv ~/projects/univaq-avv-carla-autoware/Town01_map ~/projects/univaq-avv-carla-autoware/autoware/
 ```
 
 ### Step 5: Download Autoware AI Models (Artifacts)
