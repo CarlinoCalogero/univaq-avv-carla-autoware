@@ -429,7 +429,7 @@ ln -s /workspace/autoware_data /root/autoware_data
 ```
 6. Launch the main Autoware stack:
 ```bash
-ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle vehicle_launch_pkg:=sample_vehicle_launch sensor_model:=sample_sensor_kit sensor_launch_pkg:=sample_sensor_kit_launch map_path:=/workspace/Town01_map
+ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle vehicle_launch_pkg:=sample_vehicle_launch sensor_model:=sample_sensor_kit sensor_launch_pkg:=sample_sensor_kit_launch map_path:=/workspace/Town01_map map_projection_loader.map_projector_type:=local
 ```
 7. Command the Vehicle: Autoware's 3D interface (RViz) will now open on your Windows desktop. To make the car drive, you must Localize it, Route it, and Engage it.
 
