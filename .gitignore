@@ -208,3 +208,7 @@ __marimo__/
 
 # Autoware
 autoware/
+
+# Map data
+*.osm
+*.pcd
