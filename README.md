@@ -212,6 +212,17 @@ This will take a significant amount of time (1–3 hours depending on your hardw
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error
 ```
 
+*Note: If the Autoware modules fail you can build again but this time you can force colcon to build them one at a time by running:*
+```bash
+MAKEFLAGS="-j1" colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --continue-on-error --executor sequential
+```
+
+*Note: If the `pcl_recorder` package fails (this is a known incompatible package from the CARLA ROS bridge), tell the compiler to skip it entirely by running:*
+```bash
+touch src/ros-bridge/pcl_recorder/COLCON_IGNORE
+```
+After creating this ignore file, simply re-run your `colcon build` command.
+
 ### Step 3: Create the Python Environment
 Since we have custom utility scripts (like the automated recorder and the `find_car.py` teleport script), it is best practice to run them in an isolated Python environment. **Note: This project strictly requires Python 3.12.**
 
