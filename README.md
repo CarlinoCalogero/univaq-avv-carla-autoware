@@ -9,7 +9,7 @@ To bridge this gap, we create a continuous loop:
 2. **The Nervous System (ROS 2 Bridge)**: Catches CARLA's Python API data and translates it into standardized ROS 2 messages.
 3. **The Translator (`autoware_carla_integration.launch.py`)**: Launches the nodes that remap and relay those general ROS 2 messages into Autoware's specific intake topics.
 4. **The Brain (Autoware in Docker)**: Processes the data through Localization, Perception, Planning, and Control modules.
-5. **The Muscle**: Autoware outputs an Ackermann steering command, which is sent back across the bridge to physically turn the wheels of the car in CARLA.
+5. **The Muscle (`ackermann_converter.py`)**: Autoware outputs a control command of type `AckermannControlCommand`. The CARLA bridge however expects a different type (`AckermannDrive`). This converter node runs alongside Autoware, subscribes to Autoware's control output, translates the message type, and republishes it to the CARLA bridge so it can physically turn the wheels of the car in CARLA.
 
 ## Prerequisites (The Setup)
 Before touching the code, ensure you have the following installed on your Windows machine.
@@ -118,7 +118,13 @@ source setup_bridge.sh
 ```
 *This installs ROS 2 Humble, the CARLA Python API, and builds the bridge workspace.*
 
-5. Close this terminal. The bridge environment is now built. The next step runs inside a Docker container, which has its own isolated environment, so we start fresh.
+5. Install the CycloneDDS RMW implementation. The Autoware Docker container uses CycloneDDS by default. If the bridge uses a different DDS (FastDDS is the ROS 2 Humble default), the two sides cannot discover each other's topics and CARLA sensor data will be completely invisible inside Docker. Run this **after** `setup_bridge.sh` completes (it requires the ROS 2 apt repository to already be configured):
+```bash
+sudo apt install ros-humble-rmw-cyclonedds-cpp -y
+```
+This also permanently adds `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` to your `~/.bashrc`, so every new WSL terminal you open from now on will have it set automatically.
+
+6. Close this terminal. The bridge environment is now built. The next step runs inside a Docker container, which has its own isolated environment, so we start fresh.
 
 ### Step 2: Deploy & Compile Autoware
 Now we deploy the autonomous brain.
@@ -136,10 +142,11 @@ sed -i 's/\r$//' launch_autoware.sh
 ```
 *(Note: This silently fixes the file. It won't output anything if it works successfully).*
 
-4. Launch the Docker container using `source` (same reason as Step 1 — the script uses `source` internally):
+4. Launch the Docker container:
 ```bash
-source launch_autoware.sh
+bash launch_autoware.sh
 ```
+The script copies `autoware_carla_integration.launch.py` and `ackermann_converter.py` into the `autoware/` folder automatically so Docker can find them at `/workspace/`. It then prints a recap of the commands to run inside the container before opening the shell.
 
 *(Note: You are now inside the Docker container. The following steps must be run in this container terminal).*
 
@@ -308,7 +315,9 @@ mv /root/autoware_data /workspace/autoware_data
 ### CRITICAL ORDER OF OPERATIONS: The Body Before The Brain
 You must **always** spawn the physical vehicle in CARLA (Step 3) before you launch the Autoware integration (Step 4). If you launch Autoware first, it will fail to find the car's sensor topics and the integration will crash.
 
-**The Golden Rule:** Start the World ➔ Start the Bridge ➔ Spawn the Car ➔ Boot the Brain.
+**The Golden Rule:** Start the World ➔ Start the Bridge ➔ Spawn the Car ➔ Boot the Brain ➔ Set Initial Pose.
+
+> **What changed vs. the old workflow**: The CARLA relay nodes, the Ackermann type converter, and the full Autoware stack (localization, planning, control) now all launch from a single command in Step 4. Step 5 (the old separate Autoware launch) no longer exists. The pose extractor script in Step 5A now publishes directly — no copy-pasting a giant command.
 
 ### Step 1: Launch the World & Recorder (Windows)
 1. Open PowerShell, navigate to your CARLA installation folder, and launch the engine:
@@ -329,7 +338,7 @@ source .venv/bin/activate
 ```
 5. Start the automated recorder. This saves the physics snapshot so you can replay the exact scenario later (update the host IP to your Windows IPv4 address, which you can find by running `ipconfig` in PowerShell):
 ```bash
-python3 start_simulation.py --host 192.168.1.12 --port 2000 --log_name run_001.log
+python3 start_simulation.py --host 10.48.106.7 --port 2000 --log_name run_001.log
 ```
 (*Note: Press `Ctrl+C` in this window when you are done to safely save the log*).
 
@@ -342,9 +351,13 @@ wsl -d Ubuntu-22.04 -u root
 ```bash
 source /opt/ros/humble/setup.bash && source $HOME/carla_ws/install/setup.bash
 ```
-3. Connect to CARLA (update the host IP to your Windows IPv4 address):
+3. **Critical**: force CycloneDDS before launching. The Autoware Docker container uses CycloneDDS by default. If the bridge uses FastDDS (the ROS 2 Humble default), the two cannot discover each other's topics — CARLA sensor data will be invisible inside Docker and localization will never initialize. If you completed Phase 1 Step 1.5, this is already set in your `~/.bashrc` and new terminals have it automatically. Otherwise set it manually now:
 ```bash
-ros2 launch carla_ros_bridge carla_ros_bridge.launch.py host:=192.168.1.12 port:=2000 timeout:=60 synchronous_mode:=False
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+4. Connect to CARLA (update the host IP to your Windows IPv4 address):
+```bash
+ros2 launch carla_ros_bridge carla_ros_bridge.launch.py host:=10.48.106.7 port:=2000 timeout:=60 synchronous_mode:=False
 ```
 > **Note on `synchronous_mode:=False`**: In asynchronous mode, CARLA runs at its own pace independently of the ROS bridge. This is the correct setting for real-time driving with Autoware. Synchronous mode (True) would make CARLA wait for a tick from the bridge before advancing, which is better for deterministic offline replay but incompatible with Autoware's real-time pipeline.
 
@@ -370,20 +383,27 @@ wsl -d Ubuntu-22.04 -u root
 ```bash
 source /opt/ros/humble/setup.bash && source $HOME/carla_ws/install/setup.bash
 ```
-3. Spawn the car and its sensors:
+3. Set CycloneDDS (must match the bridge terminal and Docker). If you completed Phase 1 Step 1.5 this is already in your `~/.bashrc` and set automatically in new terminals:
+```bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+```
+4. Spawn the car and its sensors:
 ```bash
 ros2 launch carla_spawn_objects carla_spawn_objects.launch.py objects_definition_file:=$HOME/projects/univaq-avv-carla-autoware/my_custom_car.json
 ```
-4. (Optional) If you want to teleport the camera to the car's location in the CARLA spectator view, open a new WSL terminal and run:
+5. (Optional) If you want to teleport the camera to the car's location in the CARLA spectator view, open a new WSL terminal and run:
 ```bash
 wsl -d Ubuntu-22.04 -u root
 cd ~/projects/univaq-avv-carla-autoware
 source .venv/bin/activate
-python3 find_car.py --host 192.168.1.12 --role ego_vehicle
+python3 find_car.py --host 10.48.106.7 --role ego_vehicle
 ```
+*(Update the host IP to your Windows IPv4 address if it has changed.)*
 
-### Step 4: Launch the CARLA-Autoware Integration (WSL Terminal 3 → Docker)
-This step starts the node that bridges CARLA's sensor topics into Autoware's expected input topics and begins recording ADAS data.
+### Step 4: Launch the Full Stack (WSL Terminal 3 → Docker)
+This single command starts everything inside Docker: the sensor relay nodes, the Ackermann type converter, the rosbag recorder, and the full Autoware stack (localization, planning, control, RViz).
+
+> **Before proceeding**: Confirm that WSLg is working (see Prerequisites → Enable GUI Display). If `$DISPLAY` is not set in your WSL2 terminal, RViz will not open.
 
 1. Open a new WSL terminal:
 ```bash
@@ -395,90 +415,71 @@ cd ~/projects/univaq-avv-carla-autoware
 ```
 3. Enter the Docker container:
 ```bash
-source launch_autoware.sh
+bash launch_autoware.sh
 ```
+The script auto-copies `autoware_carla_integration.launch.py` and `ackermann_converter.py` into `autoware/` on every run, so edits to those files should always be made in the project root — changes made inside Docker at `/workspace/` will be overwritten next time. A recap of the commands to run inside the container is printed before the shell opens.
 4. Navigate to the workspace and run your quick-boot script:
 ```bash
 cd /workspace && source boot.sh
 ```
-5. Launch the integration:
+5. Link your permanent AI models so Autoware's perception modules can find them:
 ```bash
-ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle
+ln -s /workspace/autoware_data /root/autoware_data
 ```
-*Note: This script automatically records a log to `/workspace/log_ego_vehicle`. If you stop the simulation and try to run this launch command again, it will crash with an "Output folder already exists" error. You must either use a different `vehicle_name` before launching again or delete the old log with the command*
+6. Launch the entire stack in one command:
+```bash
+ros2 launch autoware_carla_integration.launch.py \
+  vehicle_name:=ego_vehicle \
+  map_path:=/workspace/Town01_map
+```
+> `vehicle_model` and `sensor_model` default to `sample_vehicle` and `carla_sensor_kit` automatically — you only need to pass them if you want to override the defaults.
+
+This starts:
+- **Sensor relays** — forward CARLA's LiDAR, camera, GNSS, and IMU topics into Autoware's namespaces
+- **Ackermann converter** — translates Autoware's control commands into the format CARLA's bridge understands (fixes the type mismatch that caused the `control_cmd` rosbag error)
+- **Rosbag recorder** — logs all sensor data and control commands to `/workspace/log_ego_vehicle`
+- **Full Autoware stack** — NDT scan matching, EKF localizer, planning, and control nodes
+
+> **Advanced**: Pass `launch_autoware:=false` to start only the CARLA relay nodes without the Autoware stack — useful for debugging the bridge independently.
+
+*Note: This script records a log to `/workspace/log_ego_vehicle`. If you restart and the folder already exists, delete it first:*
 ```bash
 rm -rf /workspace/log_ego_vehicle
 ```
 
-### Step 5: Launch the Full Autoware Stack (WSL Terminal 4 → Docker)
-The integration is running, but Autoware's core perception and planning modules still need to be started. This step also opens RViz, the 3D visualization interface.
+### Step 5: Set the Initial Pose and Drive
 
-> **Before proceeding**: Confirm that WSLg is working (see Prerequisites → Enable GUI Display). If `$DISPLAY` is not set in your WSL2 terminal, RViz will not open.
+Autoware's RViz window will open on your Windows desktop. The State Panel will show **Localization | Uninitialized** until you provide the vehicle's starting position on the map.
 
-1. Open a completely new WSL2 terminal:
+**A. Localize the Vehicle**
+
+CARLA and ROS 2 use different coordinate systems. The `get_exact_pose.py` script reads the vehicle's exact position from CARLA, converts the coordinates, and publishes them directly to Autoware with a valid timestamp. It waits for Autoware's localization nodes to be ready before sending, so there is no race condition.
+
+1. Open a new WSL2 terminal (do **not** use the Docker terminal — this runs in WSL):
 ```bash
 wsl -d Ubuntu-22.04 -u root
 ```
-2. Navigate to your folder:
+2. Navigate to your project:
 ```bash
 cd ~/projects/univaq-avv-carla-autoware
 ```
-3. Enter the Docker container (this starts a second container session):
-```bash
-source launch_autoware.sh
-```
-4. Navigate to the workspace and run your quick-boot script:
-```bash
-cd /workspace && source boot.sh
-```
-5. Link your permanent AI models:
-```bash
-ln -s /workspace/autoware_data /root/autoware_data
-```
-6. Launch the main Autoware stack:
-```bash
-ros2 launch autoware_launch e2e_simulator.launch.xml vehicle_model:=sample_vehicle vehicle_launch_pkg:=sample_vehicle_launch sensor_model:=sample_sensor_kit sensor_launch_pkg:=sample_sensor_kit_launch map_path:=/workspace/Town01_map map_projection_loader.map_projector_type:=local
-```
-7. Command the Vehicle: Autoware's 3D interface (RViz) will now open on your Windows desktop. To make the car drive, you must Localize it, Route it, and Engage it.
-
-**A. Localize the Vehicle (The Bulletproof Way)**
-CARLA and Autoware use different coordinate systems. To perfectly align the car on the map without guessing, use the pose extractor script:
-1. Open a completely new WSL2 terminal (do NOT use a Docker terminal).
-```bash
-wsl -d Ubuntu-22.04 -u root
-```
-2. Navigate to your project and :
-```bash
-cd ~/projects/univaq-avv-carla-autoware
-```
-3. Activate the Python environment:
+3. Activate the Python environment (only the venv is needed — ROS 2 is sourced internally by the script):
 ```bash
 source .venv/bin/activate
 ```
-4. Run the script to extract the exact coordinates (update the IP to your Windows IPv4 address):
+4. Run the pose extractor:
 ```bash
-python3 get_exact_pose.py --host 192.168.1.12
+python3 get_exact_pose.py
 ```
-5. The script will output a massive `ros2 topic pub /initialpose...` command. Copy that *entire* command.
-6. Open a completely new WSL2 terminal:
-```bash
-wsl -d Ubuntu-22.04 -u root
-```
-7. Navigate to your folder:
-```bash
-cd ~/projects/univaq-avv-carla-autoware
-```
-8. Enter the Docker container (this starts a second container session):
-```bash
-source launch_autoware.sh
-```
-9. Navigate to the workspace and run your quick-boot script:
-```bash
-cd /workspace && source boot.sh
-```
-10. Paste the `ros2 topic pub /initialpose...` command and press `Enter`. In RViz, your 3D car model will instantly snap onto the map, and the Autoware State Panel will change to **Localization | OK**.
+The script connects to CARLA at `10.48.106.7` by default. If your Windows IP has changed, pass it explicitly: `python3 get_exact_pose.py --host <your_ip>`.
 
-*(Fallback Method: If you prefer the manual way, click "2D Pose Estimate" in the top RViz toolbar, then click and drag on the road roughly where the car is sitting in CARLA).*
+The script invokes `ros2 topic pub` in a subprocess that sources ROS 2 Humble on its own, so there is no Python version conflict between the venv (Python 3.12) and ROS 2 (Python 3.10). It will publish to `/initialpose` automatically. In RViz, your 3D car model will snap onto the map and the State Panel will change to **Localization | OK**.
+
+> **Warning shown?** If the script prints `No subscriber found on /initialpose after 10 seconds`, the Autoware localization stack is not up yet. Wait a few more seconds for it to finish loading and run the script again.
+
+> **Fallback**: Pass `--no-publish` to print the command instead of running it automatically. The timestamp is baked into the printed command — paste it into Docker immediately.
+
+> **Manual alternative**: Click "2D Pose Estimate" in the top RViz toolbar and click-drag on the road where the car is sitting in CARLA.
 
 **B. Route the Vehicle**
 1. Click "**2D Goal Pose**" in the top RViz toolbar.
@@ -509,18 +510,27 @@ To run multiple autonomous vehicles interacting with each other, follow the gold
 
    (Optional) To teleport the CARLA spectator camera to a specific vehicle, pass the `--role` flag:
    ```bash
-   python3 find_car.py --host 192.168.1.12 --role ego_vehicle_2
+   python3 find_car.py --host 10.48.106.7 --role ego_vehicle_2
    ```
 
-3. **Boot Agent 1**: Open a Docker terminal (following Step 4 above), source the workspace, and launch the integration for Car 1:
+3. **Boot Agent 1**: Open a Docker terminal (following Step 4 above), source the workspace, link the AI models, and launch for Car 1:
    ```bash
-   ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle
+   ln -s /workspace/autoware_data /root/autoware_data
+   ros2 launch autoware_carla_integration.launch.py \
+     vehicle_name:=ego_vehicle \
+     map_path:=/workspace/Town01_map
    ```
 
 4. **Boot Agent 2**: Open a **completely new** WSL terminal and run `source launch_autoware.sh` again. Each invocation of `launch_autoware.sh` starts a new, independent Docker container — so Agent 2 gets its own isolated Autoware brain. Source the workspace inside it and launch for Car 2:
    ```bash
-   ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle_2
+   ln -s /workspace/autoware_data /root/autoware_data
+   ros2 launch autoware_carla_integration.launch.py \
+     vehicle_name:=ego_vehicle_2 \
+     map_path:=/workspace/Town01_map
    ```
+   > `vehicle_model` and `sensor_model` default to `sample_vehicle` and `carla_sensor_kit` for both agents.
+
+5. **Localize each agent**: For each vehicle, run `get_exact_pose.py` from a WSL terminal (outside Docker) pointing to that vehicle's role name. Since both Docker containers share the host network (`--net=host`), the script's `/initialpose` publish reaches whichever Autoware instance is currently waiting for it. Localize one agent at a time.
    > **Note on logs**: Each agent writes its rosbag to `/workspace/log_<vehicle_name>`. With two agents, you will have `/workspace/log_ego_vehicle` and `/workspace/log_ego_vehicle_2`. The same no-overwrite rule applies to both — delete or rename the old folders before re-running.
 
 # Where are my logs?
