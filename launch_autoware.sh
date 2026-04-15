@@ -6,6 +6,18 @@ if ! command -v xhost &> /dev/null; then
     sudo apt update && sudo apt install x11-xserver-utils -y
 fi
 
+# Grant Docker permission to draw on the X display (WSLg / X11).
+# Without this call, RViz launches inside the container but its window
+# is silently rejected by the display server and never appears.
+if [ -n "$DISPLAY" ]; then
+    xhost +local:root > /dev/null 2>&1
+    echo "X display access granted (DISPLAY=$DISPLAY)"
+else
+    echo "WARNING: \$DISPLAY is not set — RViz will not open."
+    echo "  Verify WSLg is active: 'echo \$DISPLAY' should print ':0'."
+    echo "  On Windows 10 you need a separate X server (e.g. VcXsrv)."
+fi
+
 # Clone Autoware ONLY if the folder does not exist
 if [ ! -d "autoware" ]; then
     echo "Cloning Autoware..."
@@ -31,16 +43,14 @@ echo "================================================================"
 echo " NEXT STEPS — run these commands inside the Docker container:   "
 echo "================================================================"
 echo ""
-echo "  1. Source the workspace (first time only after a fresh build):"
+echo "  1. Source the workspace:"
 echo "     cd /workspace && source boot.sh"
 echo ""
-echo "  2. Launch the full stack:"
+echo "  2. Launch the full stack (uses e2e_simulator internally, RViz will open):"
 echo ""
 echo "     ros2 launch autoware_carla_integration.launch.py \\"
 echo "       vehicle_name:=ego_vehicle \\"
-echo "       map_path:=/workspace/Town01_map \\"
-echo "       vehicle_model:=sample_vehicle \\"
-echo "       sensor_model:=carla_sensor_kit"
+echo "       map_path:=/workspace/Town01_map"
 echo ""
 echo "  3. Once Autoware is up and showing 'Waiting for initial pose',"
 echo "     open a NEW WSL terminal and run:"

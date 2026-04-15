@@ -116,13 +116,13 @@ sed -i 's/\r$//' setup_bridge.sh
 ```bash
 source setup_bridge.sh
 ```
-*This installs ROS 2 Humble, the CARLA Python API, and builds the bridge workspace.*
+*This installs ROS 2 Humble, the CARLA Python API, builds the bridge workspace, and permanently adds `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` to `~/.bashrc`.*
 
 5. Install the CycloneDDS RMW implementation. The Autoware Docker container uses CycloneDDS by default. If the bridge uses a different DDS (FastDDS is the ROS 2 Humble default), the two sides cannot discover each other's topics and CARLA sensor data will be completely invisible inside Docker. Run this **after** `setup_bridge.sh` completes (it requires the ROS 2 apt repository to already be configured):
 ```bash
 sudo apt install ros-humble-rmw-cyclonedds-cpp -y
 ```
-This also permanently adds `export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` to your `~/.bashrc`, so every new WSL terminal you open from now on will have it set automatically.
+This also permanently adds `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` to your `~/.bashrc`, so every new WSL terminal you open from now on will have it set automatically — you will not need to export it manually.
 
 6. Close this terminal. The bridge environment is now built. The next step runs inside a Docker container, which has its own isolated environment, so we start fresh.
 
@@ -213,7 +213,9 @@ pip3 install simple-pid==0.1.4 --target /workspace/custom_libs
 echo 'source /workspace/install/setup.bash' > /workspace/boot.sh
 echo 'export PYTHONPATH=/workspace/custom_libs:$PYTHONPATH' >> /workspace/boot.sh
 echo 'dpkg -s ros-humble-ackermann-msgs >/dev/null 2>&1 || (apt-get update && apt-get install ros-humble-ackermann-msgs -y)' >> /workspace/boot.sh
+echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> /workspace/boot.sh
 ```
+This ensures Docker always uses CycloneDDS — the same implementation as the WSL bridge. No `CYCLONEDDS_URI` is set inside Docker: the default CycloneDDS config works correctly with `--net=host` and handles discovery automatically without exhausting participant slots.
 
 (You will use this `boot.sh` script in Phase 2 to instantly load your environment).
 
@@ -351,7 +353,7 @@ wsl -d Ubuntu-22.04 -u root
 ```bash
 source /opt/ros/humble/setup.bash && source $HOME/carla_ws/install/setup.bash
 ```
-3. **Critical**: force CycloneDDS before launching. The Autoware Docker container uses CycloneDDS by default. If the bridge uses FastDDS (the ROS 2 Humble default), the two cannot discover each other's topics — CARLA sensor data will be invisible inside Docker and localization will never initialize. If you completed Phase 1 Step 1.5, this is already set in your `~/.bashrc` and new terminals have it automatically. Otherwise set it manually now:
+3. Set CycloneDDS so the bridge uses the same DDS implementation as Docker. If you completed Phase 1 Step 1.5 this is already in your `~/.bashrc` and set automatically in new terminals — otherwise set it manually now:
 ```bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ```
@@ -383,7 +385,7 @@ wsl -d Ubuntu-22.04 -u root
 ```bash
 source /opt/ros/humble/setup.bash && source $HOME/carla_ws/install/setup.bash
 ```
-3. Set CycloneDDS (must match the bridge terminal and Docker). If you completed Phase 1 Step 1.5 this is already in your `~/.bashrc` and set automatically in new terminals:
+3. Set CycloneDDS (must match the bridge terminal). If you completed Phase 1 Step 1.5 this is already in your `~/.bashrc` and set automatically in new terminals:
 ```bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ```
@@ -399,6 +401,17 @@ source .venv/bin/activate
 python3 find_car.py --host 10.48.106.7 --role ego_vehicle
 ```
 *(Update the host IP to your Windows IPv4 address if it has changed.)*
+
+6. **Verify CARLA topics are visible before entering Docker.** Open a new WSL terminal and run:
+```bash
+wsl -d Ubuntu-22.04 -u root
+source /opt/ros/humble/setup.bash && source $HOME/carla_ws/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ros2 topic list | grep carla
+```
+You should see `/carla/ego_vehicle/lidar`, `/carla/ego_vehicle/gnss`, etc. **If the list is empty, stop here** — the DDS configuration is wrong and localization will never initialize. Do not proceed to Step 4 until this shows topics.
+
+> **Note:** Always source ROS 2 (`source /opt/ros/humble/setup.bash`) before running any `ros2` command in a fresh WSL terminal. Without it, the shell will return `ros2: command not found`.
 
 ### Step 4: Launch the Full Stack (WSL Terminal 3 → Docker)
 This single command starts everything inside Docker: the sensor relay nodes, the Ackermann type converter, the rosbag recorder, and the full Autoware stack (localization, planning, control, RViz).
@@ -418,19 +431,23 @@ cd ~/projects/univaq-avv-carla-autoware
 bash launch_autoware.sh
 ```
 The script auto-copies `autoware_carla_integration.launch.py` and `ackermann_converter.py` into `autoware/` on every run, so edits to those files should always be made in the project root — changes made inside Docker at `/workspace/` will be overwritten next time. A recap of the commands to run inside the container is printed before the shell opens.
-4. Navigate to the workspace and run your quick-boot script:
+4. Navigate to the workspace and run your quick-boot script. This sources the Autoware workspace and sets the DDS configuration automatically (the exports were baked into `boot.sh` during Phase 1 Step 2.14):
 ```bash
 cd /workspace && source boot.sh
 ```
+> If you built the workspace before Phase 1 Step 2.14 was updated, `boot.sh` may be missing the RMW export. In that case, set it manually after sourcing:
+> ```bash
+> export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+> ```
+> Do **not** set `CYCLONEDDS_URI` inside Docker — it breaks DDS discovery with the WSL bridge and causes Autoware's 85+ nodes to crash on startup.
+
 5. Link your permanent AI models so Autoware's perception modules can find them:
 ```bash
 ln -s /workspace/autoware_data /root/autoware_data
 ```
 6. Launch the entire stack in one command:
 ```bash
-ros2 launch autoware_carla_integration.launch.py \
-  vehicle_name:=ego_vehicle \
-  map_path:=/workspace/Town01_map
+ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle map_path:=/workspace/Town01_map
 ```
 > `vehicle_model` and `sensor_model` default to `sample_vehicle` and `carla_sensor_kit` automatically — you only need to pass them if you want to override the defaults.
 
@@ -473,9 +490,9 @@ python3 get_exact_pose.py
 ```
 The script connects to CARLA at `10.48.106.7` by default. If your Windows IP has changed, pass it explicitly: `python3 get_exact_pose.py --host <your_ip>`.
 
-The script invokes `ros2 topic pub` in a subprocess that sources ROS 2 Humble on its own, so there is no Python version conflict between the venv (Python 3.12) and ROS 2 (Python 3.10). It will publish to `/initialpose` automatically. In RViz, your 3D car model will snap onto the map and the State Panel will change to **Localization | OK**.
+The script invokes `ros2 topic pub --once` in a subprocess that sources ROS 2 Humble on its own, so there is no Python version conflict between the venv (Python 3.12) and ROS 2 (Python 3.10). `ros2 topic pub --once` waits up to 60 seconds for a subscriber on `/initialpose` before publishing — if Autoware's localization nodes are not up yet, it will wait and retry automatically. In RViz, your 3D car model will snap onto the map and the State Panel will change to **Localization | OK**.
 
-> **Warning shown?** If the script prints `No subscriber found on /initialpose after 10 seconds`, the Autoware localization stack is not up yet. Wait a few more seconds for it to finish loading and run the script again.
+> **Script hangs?** If the script keeps printing `Waiting for at least 1 matching subscription(s)...` beyond 60 seconds, the Autoware localization stack is not running or the DDS configuration inside Docker does not match the WSL side. Verify `boot.sh` was sourced and the DDS exports are set correctly inside Docker.
 
 > **Fallback**: Pass `--no-publish` to print the command instead of running it automatically. The timestamp is baked into the printed command — paste it into Docker immediately.
 
@@ -521,7 +538,7 @@ To run multiple autonomous vehicles interacting with each other, follow the gold
      map_path:=/workspace/Town01_map
    ```
 
-4. **Boot Agent 2**: Open a **completely new** WSL terminal and run `source launch_autoware.sh` again. Each invocation of `launch_autoware.sh` starts a new, independent Docker container — so Agent 2 gets its own isolated Autoware brain. Source the workspace inside it and launch for Car 2:
+4. **Boot Agent 2**: Open a **completely new** WSL terminal and run `bash launch_autoware.sh` again. Each invocation of `launch_autoware.sh` starts a new, independent Docker container — so Agent 2 gets its own isolated Autoware brain. Source the workspace inside it and launch for Car 2:
    ```bash
    ln -s /workspace/autoware_data /root/autoware_data
    ros2 launch autoware_carla_integration.launch.py \

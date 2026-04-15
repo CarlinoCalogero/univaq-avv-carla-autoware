@@ -103,8 +103,7 @@ def generate_launch_description():
 
     # ------------------------------------------------------------------ #
     # Automated ADAS logging (rosbag)
-    # Records sensor inputs only — control_cmd is excluded because
-    # Autoware owns that topic exclusively after the type fix above.
+    # Records sensor inputs and control commands for post-run analysis.
     # ------------------------------------------------------------------ #
     record_adas = ExecuteProcess(
         cmd=[
@@ -122,23 +121,27 @@ def generate_launch_description():
     # ------------------------------------------------------------------ #
     # Full Autoware stack
     #
-    # Launches localization (NDT + EKF), planning, and control nodes.
-    # Requires map_path, vehicle_model, and sensor_model to be correct.
-    # Set launch_autoware:=false to skip this (e.g. if launching Autoware
-    # from a separate terminal).
+    # Uses e2e_simulator.launch.xml which is designed for simulation
+    # environments (CARLA, AWSIM). It sets up the simulation clock,
+    # RViz, and sim-specific parameters — unlike autoware.launch.xml
+    # which is the real-vehicle launcher and does not open RViz.
+    # Set launch_autoware:=false to skip (e.g. for bridge-only debugging).
     # ------------------------------------------------------------------ #
     autoware_launch = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
             PathJoinSubstitution([
                 FindPackageShare('autoware_launch'),
                 'launch',
-                'autoware.launch.xml'
+                'e2e_simulator.launch.xml'
             ])
         ),
         launch_arguments={
-            'map_path':      map_path,
-            'vehicle_model': vehicle_model,
-            'sensor_model':  sensor_model,
+            'map_path':                                  map_path,
+            'vehicle_model':                             vehicle_model,
+            'vehicle_launch_pkg':                        'sample_vehicle_launch',
+            'sensor_model':                              sensor_model,
+            'sensor_launch_pkg':                         'carla_sensor_kit_launch',
+            'map_projection_loader.map_projector_type':  'local',
         }.items(),
         condition=IfCondition(launch_autoware)
     )

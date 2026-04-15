@@ -70,8 +70,8 @@ colcon build --symlink-install --continue-on-error
 source install/setup.bash
 
 # Force CycloneDDS so the bridge uses the same DDS implementation as the
-# Autoware Docker container. Without this, FastDDS (ROS 2 default) and
-# CycloneDDS (Autoware default) cannot discover each other's topics.
+# Autoware Docker container. The default CycloneDDS config (no CYCLONEDDS_URI)
+# is compatible with Docker's --net=host network and handles discovery automatically.
 echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 
 echo "CARLA ROS Bridge setup complete! Ready to launch."
