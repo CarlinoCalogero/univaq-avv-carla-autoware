@@ -198,12 +198,17 @@ rosdep update
 rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO
 ```
 
-14. Install Python Dependencies for the Bridge
+14. Create the Persistent Workspace Bootloader
 
-The CARLA ROS bridge requires a specific version of `simple-pid` for its control loop. This version is pinned intentionally for compatibility — do not upgrade it:
+Because Docker resets its environment every time it closes, system-level dependencies (like the `simple-pid` Python package and the `ackermann_msgs` ROS package required by the bridge) get erased. We will bypass this by saving the Python package permanently to your workspace and adding a smart-installer to our quick-boot script:
 ```bash
-pip3 install simple-pid==0.1.4
+pip3 install simple-pid==0.1.4 --target /workspace/custom_libs
+echo 'source /workspace/install/setup.bash' > /workspace/boot.sh
+echo 'export PYTHONPATH=/workspace/custom_libs:$PYTHONPATH' >> /workspace/boot.sh
+echo 'dpkg -s ros-humble-ackermann-msgs >/dev/null 2>&1 || (apt-get update && apt-get install ros-humble-ackermann-msgs -y)' >> /workspace/boot.sh
 ```
+
+(You will use this `boot.sh` script in Phase 2 to instantly load your environment).
 
 15. Build the entire autonomous driving stack
 
@@ -392,15 +397,18 @@ cd ~/projects/univaq-avv-carla-autoware
 ```bash
 source launch_autoware.sh
 ```
-4. Navigate to the workspace and source it:
+4. Navigate to the workspace and run your quick-boot script:
 ```bash
-cd /workspace && source install/setup.bash
+cd /workspace && source boot.sh
 ```
 5. Launch the integration:
 ```bash
 ros2 launch autoware_carla_integration.launch.py vehicle_name:=ego_vehicle
 ```
-*Note: This script automatically starts a rosbag2 recorder to log your ADAS data to `/workspace/log_ego_vehicle`.*
+*Note: This script automatically records a log to `/workspace/log_ego_vehicle`. If you stop the simulation and try to run this launch command again, it will crash with an "Output folder already exists" error. You must either use a different `vehicle_name` before launching again or delete the old log with the command*
+```bash
+rm -rf /workspace/log_ego_vehicle
+```
 
 ### Step 5: Launch the Full Autoware Stack (WSL Terminal 4 → Docker)
 The integration is running, but Autoware's core perception and planning modules still need to be started. This step also opens RViz, the 3D visualization interface.
@@ -419,9 +427,9 @@ cd ~/projects/univaq-avv-carla-autoware
 ```bash
 source launch_autoware.sh
 ```
-4. Navigate to the workspace and source it:
+4. Navigate to the workspace and run your quick-boot script:
 ```bash
-cd /workspace && source install/setup.bash
+cd /workspace && source boot.sh
 ```
 5. Link your permanent AI models:
 ```bash
@@ -464,9 +472,9 @@ cd ~/projects/univaq-avv-carla-autoware
 ```bash
 source launch_autoware.sh
 ```
-9. Navigate to the workspace and source it:
+9. Navigate to the workspace and run your quick-boot script:
 ```bash
-cd /workspace && source install/setup.bash
+cd /workspace && source boot.sh
 ```
 10. Paste the `ros2 topic pub /initialpose...` command and press `Enter`. In RViz, your 3D car model will instantly snap onto the map, and the Autoware State Panel will change to **Localization | OK**.
 
