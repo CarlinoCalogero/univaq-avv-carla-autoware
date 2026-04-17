@@ -5,7 +5,8 @@ Run this script on Windows where CARLA server is running.
 
 Usage:
     python spawn_vehicle.py
-    python spawn_vehicle.py --host localhost --port 2000 --vehicle vehicle.lincoln.mkz_2020
+    python spawn_vehicle.py --map Town01
+    python spawn_vehicle.py --host localhost --port 2000 --vehicle vehicle.lincoln.mkz_2020 --map Town03
 """
 
 import sys
@@ -24,10 +25,15 @@ except ImportError:
     sys.exit(1)
 
 
-def spawn_vehicle(host: str, port: int, vehicle_filter: str) -> None:
+def spawn_vehicle(host: str, port: int, vehicle_filter: str, map_name: str) -> None:
     print(f"Connecting to CARLA at {host}:{port} ...")
     client = carla.Client(host, port)
     client.set_timeout(10.0)
+
+    # --- NEW: Load the requested map if provided ---
+    if map_name:
+        print(f"Requesting map change to '{map_name}'... (this may take a few seconds)")
+        client.load_world(map_name)
 
     world = client.get_world()
     print(f"Connected. Map: {world.get_map().name}")
@@ -98,5 +104,14 @@ if __name__ == "__main__":
         default="vehicle.lincoln.mkz_2020",
         help="Vehicle blueprint filter (default: vehicle.lincoln.mkz_2020)",
     )
+    # --- NEW: Map argument ---
+    parser.add_argument(
+        "--map",
+        default=None,
+        type=str,
+        help="Load a specific CARLA map before spawning (e.g., Town01, Town03)",
+    )
     args = parser.parse_args()
-    spawn_vehicle(args.host, args.port, args.vehicle)
+    
+    # Pass the new map argument to the function
+    spawn_vehicle(args.host, args.port, args.vehicle, args.map)

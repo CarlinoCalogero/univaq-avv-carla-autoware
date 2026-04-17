@@ -1,30 +1,6 @@
 #!/usr/bin/env python3
 """
-CARLA <-> Autoware Bridge Node
-Run this inside WSL2 as a ROS2 node.
-
-Direction A  (Autoware -> CARLA):
-  Subscribes:  /control/command/control_cmd  (AckermannControlCommand or AckermannDrive)
-  Applies:     carla.VehicleControl to the ego_vehicle actor
-
-Direction B  (CARLA -> Autoware):
-  Reads:       ego_vehicle state via CARLA Python API
-  Publishes:   /sensing/gnss/pose        NavSatFix
-               /sensing/imu/imu_raw      Imu
-               /localization/kinematic_state  Odometry
-               /vehicle/status/velocity_status  VelocityReport   (Autoware msgs)
-               /vehicle/status/steering_status  SteeringReport   (Autoware msgs)
-
-Usage:
-    # Get Windows host IP first
-    source scripts/get_host_ip.sh
-
-    ros2 run <package> bridge_node --ros-args \
-        -p carla_host:=<WINDOWS_HOST_IP> \
-        -p carla_port:=2000
-
-    # Or set CARLA_HOST env var and run directly:
-    CARLA_HOST=172.x.x.x python3 bridge_node.py
+CARLA <-> Autoware Bridge Node (Modern Autoware Universe Version)
 """
 
 import math
@@ -39,10 +15,11 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus
 from std_msgs.msg import Header
 
-# ── Autoware message types (with ackermann_msgs fallback) ──────────────────
+# ── Modern Autoware message types (with ackermann_msgs fallback) ───────────
 try:
-    from autoware_auto_control_msgs.msg import AckermannControlCommand
-    from autoware_auto_vehicle_msgs.msg import SteeringReport, VelocityReport
+    # Changed from autoware_auto_* to standard autoware_*
+    from autoware_control_msgs.msg import Control
+    from autoware_vehicle_msgs.msg import SteeringReport, VelocityReport
 
     AUTOWARE_MSGS = True
 except ImportError:
@@ -51,14 +28,12 @@ except ImportError:
 
         AUTOWARE_MSGS = False
         print(
-            "[bridge_node] autoware_auto_control_msgs not found – "
-            "falling back to ackermann_msgs/AckermannDrive on "
-            "/control/command/control_cmd"
+            "[bridge_node] autoware_control_msgs not found – "
+            "falling back to ackermann_msgs/AckermannDrive"
         )
     except ImportError:
         raise ImportError(
-            "Neither autoware_auto_control_msgs nor ackermann_msgs is installed.\n"
-            "Install one of them before running this node."
+            "Neither autoware_control_msgs nor ackermann_msgs is installed."
         )
 
 # ── CARLA Python API ───────────────────────────────────────────────────────
@@ -68,21 +43,14 @@ except ImportError:
     raise ImportError(
         "carla Python package not found in WSL.\n"
         "pip install carla==<your-carla-version>\n"
-        "or add the egg: sys.path.append('/mnt/c/CARLA/PythonAPI/carla/dist/...')"
     )
 
-# CARLA uses a left-hand coordinate system; ROS2 uses right-hand.
-# We negate the Y axis when converting.
+CARLA_MAX_STEER_RAD = math.radians(70.0)
 
-CARLA_MAX_STEER_RAD = math.radians(70.0)   # Lincoln MKZ default
-
-# Rough WGS-84 reference for map-to-GPS conversion
-# Town01 approximate origin (you can adjust per map)
-MAP_ORIGIN_LAT = 48.9968  # degrees
-MAP_ORIGIN_LON = 8.0000   # degrees
+MAP_ORIGIN_LAT = 48.9968 
+MAP_ORIGIN_LON = 8.0000   
 METERS_PER_DEG_LAT = 111_320.0
 METERS_PER_DEG_LON = 111_320.0 * math.cos(math.radians(MAP_ORIGIN_LAT))
-
 
 def carla_to_ros_stamp(node: Node):
     return node.get_clock().now().to_msg()
@@ -92,13 +60,12 @@ class CarlaAutowareBridge(Node):
     def __init__(self):
         super().__init__("carla_autoware_bridge")
 
-        # ── Parameters ────────────────────────────────────────────────────
         self.declare_parameter("carla_host", os.environ.get("CARLA_HOST", "172.28.0.1"))
         self.declare_parameter("carla_port", 2000)
         self.declare_parameter("ego_role_name", "ego_vehicle")
-        self.declare_parameter("publish_rate", 20.0)   # Hz
-        self.declare_parameter("speed_kp", 0.4)        # throttle P-gain
-        self.declare_parameter("brake_kp", 0.6)        # brake P-gain
+        self.declare_parameter("publish_rate", 20.0)   
+        self.declare_parameter("speed_kp", 0.4)        
+        self.declare_parameter("brake_kp", 0.6)        
 
         self.carla_host = self.get_parameter("carla_host").value
         self.carla_port = self.get_parameter("carla_port").value
@@ -107,7 +74,6 @@ class CarlaAutowareBridge(Node):
         self.speed_kp = self.get_parameter("speed_kp").value
         self.brake_kp = self.get_parameter("brake_kp").value
 
-        # ── CARLA connection ──────────────────────────────────────────────
         self.get_logger().info(f"Connecting to CARLA at {self.carla_host}:{self.carla_port} ...")
         self.client = carla.Client(self.carla_host, self.carla_port)
         self.client.set_timeout(10.0)
@@ -117,63 +83,37 @@ class CarlaAutowareBridge(Node):
         self.ego_vehicle = None
         self._find_ego_vehicle()
 
-        # ── Publishers: CARLA -> Autoware ─────────────────────────────────
         self.pub_gnss = self.create_publisher(NavSatFix, "/sensing/gnss/pose", 10)
         self.pub_imu = self.create_publisher(Imu, "/sensing/imu/imu_raw", 10)
         self.pub_odom = self.create_publisher(Odometry, "/localization/kinematic_state", 10)
 
         if AUTOWARE_MSGS:
-            self.pub_vel = self.create_publisher(
-                VelocityReport, "/vehicle/status/velocity_status", 10
-            )
-            self.pub_steer = self.create_publisher(
-                SteeringReport, "/vehicle/status/steering_status", 10
-            )
+            self.pub_vel = self.create_publisher(VelocityReport, "/vehicle/status/velocity_status", 10)
+            self.pub_steer = self.create_publisher(SteeringReport, "/vehicle/status/steering_status", 10)
         else:
             self.pub_vel = None
             self.pub_steer = None
 
-        # ── Subscriber: Autoware -> CARLA ─────────────────────────────────
         if AUTOWARE_MSGS:
             self.create_subscription(
-                AckermannControlCommand,
+                Control,  # Changed from AckermannControlCommand
                 "/control/command/control_cmd",
                 self._on_control_command,
                 10,
             )
         else:
-            self.create_subscription(
-                AckermannDrive,
-                "/control/command/control_cmd",
-                self._on_ackermann_drive,
-                10,
-            )
+            self.create_subscription(AckermannDrive, "/control/command/control_cmd", self._on_ackermann_drive, 10)
 
-        self.get_logger().info(
-            f"Subscribing to /control/command/control_cmd "
-            f"({'AckermannControlCommand' if AUTOWARE_MSGS else 'AckermannDrive'})"
-        )
-
-        # ── Publish timer ─────────────────────────────────────────────────
-        self.create_timer(1.0 / publish_rate, self._publish_vehicle_state)
         self.get_logger().info("Bridge ready.")
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Helpers
-    # ─────────────────────────────────────────────────────────────────────
+        self.create_timer(1.0 / publish_rate, self._publish_vehicle_state)
 
     def _find_ego_vehicle(self):
         for actor in self.world.get_actors():
             if actor.attributes.get("role_name") == self.ego_role_name:
                 self.ego_vehicle = actor
-                self.get_logger().info(
-                    f"Found ego_vehicle: {actor.type_id}  id={actor.id}"
-                )
+                self.get_logger().info(f"Found ego_vehicle: {actor.type_id}  id={actor.id}")
                 return
-        self.get_logger().warn(
-            f"Ego vehicle (role_name='{self.ego_role_name}') not found. "
-            "Run windows/spawn_vehicle.py first."
-        )
+        self.get_logger().warn(f"Ego vehicle not found. Run windows/spawn_vehicle.py first.")
 
     def _current_speed(self) -> float:
         vel = self.ego_vehicle.get_velocity()
@@ -185,16 +125,12 @@ class CarlaAutowareBridge(Node):
         h.frame_id = frame_id
         return h
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Autoware -> CARLA
-    # ─────────────────────────────────────────────────────────────────────
-
-    def _on_control_command(self, msg: "AckermannControlCommand"):
+    def _on_control_command(self, msg):
         if self.ego_vehicle is None:
             self._find_ego_vehicle()
             return
         self._apply_control(
-            target_speed=msg.longitudinal.speed,
+            target_speed=msg.longitudinal.velocity, # Changed from .speed to .velocity
             target_accel=msg.longitudinal.acceleration,
             steering_angle=msg.lateral.steering_tire_angle,
         )
@@ -203,11 +139,7 @@ class CarlaAutowareBridge(Node):
         if self.ego_vehicle is None:
             self._find_ego_vehicle()
             return
-        self._apply_control(
-            target_speed=msg.speed,
-            target_accel=msg.acceleration,
-            steering_angle=msg.steering_angle,
-        )
+        self._apply_control(target_speed=msg.speed, target_accel=msg.acceleration, steering_angle=msg.steering_angle)
 
     def _apply_control(self, target_speed: float, target_accel: float, steering_angle: float):
         current_speed = self._current_speed()
@@ -224,21 +156,15 @@ class CarlaAutowareBridge(Node):
                 ctrl.throttle = 0.0
                 ctrl.brake = min(abs(speed_error) * self.brake_kp, 1.0)
             else:
-                ctrl.throttle = 0.03   # small keep-alive to hold speed
+                ctrl.throttle = 0.03  
                 ctrl.brake = 0.0
         else:
             ctrl.reverse = True
             ctrl.throttle = min(abs(target_speed) * self.speed_kp, 1.0)
             ctrl.brake = 0.0
 
-        # CARLA steer is [-1, 1]; negate because CARLA uses left-hand coords
         ctrl.steer = max(-1.0, min(1.0, -steering_angle / CARLA_MAX_STEER_RAD))
-
         self.ego_vehicle.apply_control(ctrl)
-
-    # ─────────────────────────────────────────────────────────────────────
-    # CARLA -> Autoware
-    # ─────────────────────────────────────────────────────────────────────
 
     def _publish_vehicle_state(self):
         if self.ego_vehicle is None:
@@ -254,39 +180,34 @@ class CarlaAutowareBridge(Node):
         loc = transform.location
         rot = transform.rotation
 
-        # ── GNSS ──────────────────────────────────────────────────────────
         gnss = NavSatFix()
         gnss.header = self._make_header("gnss_link")
         gnss.status.status = NavSatStatus.STATUS_FIX
         gnss.status.service = NavSatStatus.SERVICE_GPS
-        # Convert CARLA XY (meters) to lat/lon using map origin reference
         gnss.latitude = MAP_ORIGIN_LAT + loc.y / METERS_PER_DEG_LAT
         gnss.longitude = MAP_ORIGIN_LON + loc.x / METERS_PER_DEG_LON
         gnss.altitude = loc.z
         gnss.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_gnss.publish(gnss)
 
-        # ── IMU ───────────────────────────────────────────────────────────
         imu = Imu()
         imu.header = self._make_header("imu_link")
         imu.linear_acceleration.x = accel.x
-        imu.linear_acceleration.y = -accel.y   # right-hand flip
+        imu.linear_acceleration.y = -accel.y   
         imu.linear_acceleration.z = accel.z
         imu.angular_velocity.x = math.radians(ang_vel.x)
         imu.angular_velocity.y = -math.radians(ang_vel.y)
         imu.angular_velocity.z = -math.radians(ang_vel.z)
-        # Build quaternion from yaw only (simplified; no pitch/roll)
         yaw = math.radians(-rot.yaw)
         imu.orientation.z = math.sin(yaw / 2.0)
         imu.orientation.w = math.cos(yaw / 2.0)
         self.pub_imu.publish(imu)
 
-        # ── Odometry ──────────────────────────────────────────────────────
         odom = Odometry()
         odom.header = self._make_header("map")
         odom.child_frame_id = "base_link"
         odom.pose.pose.position.x = loc.x
-        odom.pose.pose.position.y = -loc.y   # right-hand flip
+        odom.pose.pose.position.y = -loc.y   
         odom.pose.pose.position.z = loc.z
         odom.pose.pose.orientation.z = math.sin(yaw / 2.0)
         odom.pose.pose.orientation.w = math.cos(yaw / 2.0)
@@ -295,10 +216,8 @@ class CarlaAutowareBridge(Node):
         odom.twist.twist.angular.z = -math.radians(ang_vel.z)
         self.pub_odom.publish(odom)
 
-        # ── Autoware-specific status ───────────────────────────────────────
         if AUTOWARE_MSGS:
             speed = math.sqrt(velocity.x ** 2 + velocity.y ** 2 + velocity.z ** 2)
-
             vel_report = VelocityReport()
             vel_report.header = self._make_header("base_link")
             vel_report.longitudinal_velocity = float(speed)
@@ -309,13 +228,9 @@ class CarlaAutowareBridge(Node):
             steer_report = SteeringReport()
             steer_report.stamp = now
             ctrl_state = self.ego_vehicle.get_control()
-            steer_report.steering_tire_angle = float(
-                -ctrl_state.steer * CARLA_MAX_STEER_RAD
-            )
+            steer_report.steering_tire_angle = float(-ctrl_state.steer * CARLA_MAX_STEER_RAD)
             self.pub_steer.publish(steer_report)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 def main(args=None):
     rclpy.init(args=args)
     node = CarlaAutowareBridge()
@@ -326,7 +241,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()
