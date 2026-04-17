@@ -1,0 +1,9 @@
+# Windows-side requirements (run on the Windows machine alongside CARLA)
+# Install with: pip install -r requirements.txt
+
+# Option A – pip wheel (must match your CARLA version)
+carla==0.9.15
+
+# Option B – if the pip wheel is not available for your version,
+# add the CARLA egg to sys.path inside spawn_vehicle.py instead:
+#   sys.path.append('C:/CARLA/PythonAPI/carla/dist/carla-X.X.X-py3.X-win-amd64.egg')

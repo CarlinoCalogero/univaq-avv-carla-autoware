@@ -1,0 +1,12 @@
+# WSL-side Python requirements
+# Install with: pip install -r requirements.txt
+#
+# Note: ROS2 packages (rclpy, sensor_msgs, etc.) come from your ROS2 installation,
+# not pip. Source your ROS2 setup first:
+#   source /opt/ros/humble/setup.bash
+
+# CARLA Python API – must match your CARLA server version
+carla==0.9.15
+
+# If autoware_auto_control_msgs is NOT installed via Autoware, use this fallback:
+# ackermann-msgs  # (install via apt: sudo apt install ros-humble-ackermann-msgs)
