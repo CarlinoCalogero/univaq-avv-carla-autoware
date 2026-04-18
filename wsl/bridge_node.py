@@ -8,7 +8,7 @@ import os
 import rclpy
 import numpy as np
 from rclpy.node import Node
-from tf2_ros import TransformBroadcaster
+from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
 from nav_msgs.msg import Odometry
@@ -20,27 +20,21 @@ try:
     from autoware_control_msgs.msg import Control
     from autoware_vehicle_msgs.msg import SteeringReport, VelocityReport
     AUTOWARE_MSGS = True
-    print("[BRIDGE] Success: Found Autoware message types.")
 except ImportError:
     AUTOWARE_MSGS = False
-    print("[BRIDGE] Warning: Autoware messages not found, using fallback logic.")
 
 try:
     from autoware_perception_msgs.msg import PredictedObjects
     PERCEPTION_MSGS = True
-    print("[BRIDGE] Success: Found autoware_perception_msgs.")
 except ImportError:
     try:
         from autoware_auto_perception_msgs.msg import PredictedObjects
         PERCEPTION_MSGS = True
-        print("[BRIDGE] Success: Found autoware_auto_perception_msgs.")
     except ImportError:
         PERCEPTION_MSGS = False
-        print("[BRIDGE] Warning: PredictedObjects not found — dynamic_object stub disabled.")
 
 try:
     import carla
-    print(f"[BRIDGE] Success: CARLA Python API loaded.")
 except ImportError:
     raise ImportError("carla Python package not found.")
 
@@ -74,15 +68,26 @@ class CarlaAutowareBridge(Node):
         self.init_sent = False
         self.last_control_time = 0 
         
-        self.tf_broadcaster = TransformBroadcaster(self)
+        # ==========================================================
+        # CRITICAL FIX: STATIC TRANSFORM
+        # This prevents Autoware from dropping LiDAR point clouds 
+        # due to dynamic timestamp extrapolation errors.
+        # ==========================================================
+        self.static_tf_broadcaster = StaticTransformBroadcaster(self)
+        t_lidar = TransformStamped()
+        t_lidar.header.stamp = self.get_clock().now().to_msg()
+        t_lidar.header.frame_id = "base_link"
+        t_lidar.child_frame_id = "velodyne_top"
+        t_lidar.transform.translation.z = 2.4
+        t_lidar.transform.rotation.w = 1.0
+        self.static_tf_broadcaster.sendTransform(t_lidar)
+        
         self.pub_gnss_pose = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose", 10)
         self.pub_gnss_cov = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose_with_covariance", 10)
         
-        self.pub_imu = self.create_publisher(Imu, "/sensing/imu/imu_raw", 10)
-        # Publish directly to imu_corrector output: the imu_corrector node receives
-        # nothing (wrong input topic in the sensor kit), so its output is dead.
-        # This bypasses it and ensures gyro_odometer gets angular velocity data.
-        self.pub_imu_corrected = self.create_publisher(Imu, "/sensing/imu/imu_corrector/imu", 10)
+        self.pub_imu_raw = self.create_publisher(Imu, "/sensing/imu/imu_raw", 10)
+        self.pub_imu_data = self.create_publisher(Imu, "/sensing/imu/imu_data", 10)
+        
         self.pub_vel = self.create_publisher(VelocityReport, "/vehicle/status/velocity_status", 10)
         self.pub_steer = self.create_publisher(SteeringReport, "/vehicle/status/steering_status", 10)
         
@@ -100,8 +105,6 @@ class CarlaAutowareBridge(Node):
         
         self.create_timer(0.05, self._publish_vehicle_state) 
         self.create_timer(2.0, self._attempt_autoware_initialization) 
-        
-        print("[BRIDGE] Node fully initialized. Searching for ego_vehicle in CARLA...")
 
     def _find_actors(self):
         actors = self.world.get_actors()
@@ -110,13 +113,11 @@ class CarlaAutowareBridge(Node):
             if actor.attributes.get("role_name") == self.role_name:
                 if not self.ego_vehicle:
                     self.ego_vehicle = actor
-                    print(f"[BRIDGE] Found vehicle with role '{self.role_name}' (ID: {actor.id})")
                 found_ego = True
             elif actor.attributes.get("role_name") == "lidar_sensor":
                 if not self.lidar_sensor:
                     self.lidar_sensor = actor
                     self.lidar_sensor.listen(self._on_lidar_data)
-                    print(f"[BRIDGE] Found lidar_sensor (ID: {actor.id}). Started publishing PointCloud2.")
         return found_ego
 
     def _on_lidar_data(self, carla_lidar_measurement):
@@ -178,8 +179,11 @@ class CarlaAutowareBridge(Node):
         p.pose.pose.position.x = loc.x
         p.pose.pose.position.y = -loc.y
         p.pose.pose.position.z = loc.z  
+        
         p.pose.pose.orientation.z = math.sin(yaw / 2.0)
         p.pose.pose.orientation.w = math.cos(yaw / 2.0)
+        p.pose.pose.orientation.x = 0.0
+        p.pose.pose.orientation.y = 0.0
         
         req.pose = [p] 
 
@@ -195,16 +199,14 @@ class CarlaAutowareBridge(Node):
                 print("\n[BRIDGE] SUCCESS: Autoware EKF Localizer is now ACTIVATED.\n")
                 self.localization_initialized = True
             else:
-                print(f"[BRIDGE] Autoware Rejected Pose: {response.status.message}")
                 self.init_sent = False
         except Exception as e:
-            print(f"[BRIDGE] Initialization call failed: {e}")
             self.init_sent = False
 
     def _on_control_command(self, msg):
         self.last_control_time = self.get_clock().now().nanoseconds
         
-        if self.ego_vehicle:
+        if self.ego_vehicle and self.localization_initialized:
             ctrl = carla.VehicleControl()
             target_vel = msg.longitudinal.velocity
             
@@ -237,16 +239,6 @@ class CarlaAutowareBridge(Node):
 
         now = self.get_clock().now().to_msg()
         current_time_ns = self.get_clock().now().nanoseconds
-        
-        if (current_time_ns - self.last_control_time) > 500_000_000:
-            ctrl = carla.VehicleControl()
-            ctrl.throttle = 0.0
-            ctrl.steer = 0.0
-            ctrl.brake = 1.0           
-            ctrl.hand_brake = True     
-            ctrl.manual_gear_shift = True
-            ctrl.gear = 0
-            self.ego_vehicle.apply_control(ctrl)
 
         transform = self.ego_vehicle.get_transform()
         velocity = self.ego_vehicle.get_velocity()
@@ -254,35 +246,46 @@ class CarlaAutowareBridge(Node):
         rot = transform.rotation
 
         real_speed = math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2)
-        reported_speed = 0.0 if real_speed < 0.2 else real_speed
-
-        t_lidar = TransformStamped()
-        t_lidar.header.stamp, t_lidar.header.frame_id, t_lidar.child_frame_id = now, "base_link", "velodyne_top"
-        t_lidar.transform.translation.z = 2.4
-        t_lidar.transform.rotation.w = 1.0
-        self.tf_broadcaster.sendTransform(t_lidar)
-
-        # ---> CRITICAL FIX 1: Stop publishing GNSS after NDT wakes up to prevent EKF panic
+        
         if not self.localization_initialized:
-            gnss_pose = PoseWithCovarianceStamped()
-            gnss_pose.header.stamp, gnss_pose.header.frame_id = now, "map"
-            gnss_pose.pose.pose.position.x = loc.x
-            gnss_pose.pose.pose.position.y = -loc.y
-            gnss_pose.pose.pose.position.z = loc.z 
-            yaw_rad = math.radians(-rot.yaw)
-            gnss_pose.pose.pose.orientation.z = math.sin(yaw_rad/2)
-            gnss_pose.pose.pose.orientation.w = math.cos(yaw_rad/2)
-            
-            gnss_pose.pose.covariance = [
-                1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
-                0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.05
-            ]
-            self.pub_gnss_pose.publish(gnss_pose)
-            self.pub_gnss_cov.publish(gnss_pose) 
+            ctrl = carla.VehicleControl()
+            ctrl.throttle = 0.0
+            ctrl.steer = 0.0
+            ctrl.brake = 1.0           
+            ctrl.hand_brake = True     
+            self.ego_vehicle.apply_control(ctrl)
+            reported_speed = 0.0
+        else:
+            reported_speed = 0.0 if real_speed < 0.2 else real_speed
+            if (current_time_ns - self.last_control_time) > 500_000_000:
+                ctrl = carla.VehicleControl()
+                ctrl.brake = 1.0           
+                ctrl.hand_brake = True     
+                self.ego_vehicle.apply_control(ctrl)
+
+        yaw_rad = math.radians(-rot.yaw)
+        
+        gnss_pose = PoseWithCovarianceStamped()
+        gnss_pose.header.stamp, gnss_pose.header.frame_id = now, "map"
+        gnss_pose.pose.pose.position.x = loc.x
+        gnss_pose.pose.pose.position.y = -loc.y
+        gnss_pose.pose.pose.position.z = loc.z 
+        
+        gnss_pose.pose.pose.orientation.w = math.cos(yaw_rad/2)
+        gnss_pose.pose.pose.orientation.x = 0.0
+        gnss_pose.pose.pose.orientation.y = 0.0
+        gnss_pose.pose.pose.orientation.z = math.sin(yaw_rad/2)
+        
+        gnss_pose.pose.covariance = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.05
+        ]
+        self.pub_gnss_pose.publish(gnss_pose)
+        self.pub_gnss_cov.publish(gnss_pose) 
 
         v_rep = VelocityReport()
         v_rep.header.stamp, v_rep.header.frame_id = now, "base_link"
@@ -295,20 +298,14 @@ class CarlaAutowareBridge(Node):
         steer.steering_tire_angle = float(self.ego_vehicle.get_control().steer * CARLA_MAX_STEER_RAD)
         self.pub_steer.publish(steer)
 
-        # ---> CRITICAL FIX 2: Full 3D Orientation math for IMU so the car doesn't slide on hills
         imu = Imu()
-        imu.header.stamp, imu.header.frame_id = now, "base_link"
-        cr = math.cos(math.radians(-rot.roll) * 0.5)
-        sr = math.sin(math.radians(-rot.roll) * 0.5)
-        cp = math.cos(math.radians(-rot.pitch) * 0.5)
-        sp = math.sin(math.radians(-rot.pitch) * 0.5)
-        cy = math.cos(math.radians(-rot.yaw) * 0.5)
-        sy = math.sin(math.radians(-rot.yaw) * 0.5)
+        imu.header.stamp = now
+        imu.header.frame_id = "tamagawa/imu_link" 
         
-        imu.orientation.w = cr * cp * cy + sr * sp * sy
-        imu.orientation.x = sr * cp * cy - cr * sp * sy
-        imu.orientation.y = cr * sp * cy + sr * cp * sy
-        imu.orientation.z = cr * cp * sy - sr * sp * cy
+        imu.orientation.w = math.cos(yaw_rad/2)
+        imu.orientation.x = 0.0
+        imu.orientation.y = 0.0
+        imu.orientation.z = math.sin(yaw_rad/2)
         
         cov = [0.0] * 9
         cov[0], cov[4], cov[8] = 0.01, 0.01, 0.01
@@ -316,16 +313,17 @@ class CarlaAutowareBridge(Node):
         imu.angular_velocity_covariance = cov
         imu.linear_acceleration_covariance = cov
         
+        imu.linear_acceleration.x = 0.0
+        imu.linear_acceleration.y = 0.0
         imu.linear_acceleration.z = 9.81
-
-        # Angular velocity from CARLA physics (convert left-handed → ROS right-handed: negate y and z)
-        av = self.ego_vehicle.get_angular_velocity()  # degrees/s in CARLA world frame
-        imu.angular_velocity.x =  math.radians( av.x)
+        
+        av = self.ego_vehicle.get_angular_velocity()  
+        imu.angular_velocity.x =  math.radians(av.x)
         imu.angular_velocity.y =  math.radians(-av.y)
         imu.angular_velocity.z =  math.radians(-av.z)
 
-        self.pub_imu.publish(imu)
-        self.pub_imu_corrected.publish(imu)
+        self.pub_imu_raw.publish(imu)
+        self.pub_imu_data.publish(imu)
 
         if self.pub_objects:
             empty_objects = PredictedObjects()
