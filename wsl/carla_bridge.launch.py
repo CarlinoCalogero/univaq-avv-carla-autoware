@@ -15,25 +15,19 @@ def generate_launch_description():
         DeclareLaunchArgument('vehicle_name', default_value='ego_vehicle'),
 
         IncludeLaunchDescription(
-            AnyLaunchDescriptionSource(
-                os.path.join(autoware_pkg, 'launch', 'autoware.launch.xml')
-            ),
+            AnyLaunchDescriptionSource(os.path.join(autoware_pkg, 'launch', 'autoware.launch.xml')),
             launch_arguments={
                 'map_path': LaunchConfiguration('map_path'),
                 'vehicle_model': LaunchConfiguration('vehicle_model'),
                 'sensor_model': LaunchConfiguration('sensor_model'),
                 'vehicle_name': LaunchConfiguration('vehicle_name'),
-                
                 'launch_vehicle_interface': 'false',
                 'launch_perception': 'false',
                 
-                # Topic Remappings
+                # RE-MAPPINGS FOR INITIALIZATION
+                '/sensing/gnss/pose_with_covariance': '/sensing/gnss/pose',
                 '/vehicle/status/velocity': '/vehicle/status/velocity_status',
                 '/vehicle/status/steering': '/vehicle/status/steering_status',
-                '/control/command': '/control/command/control_cmd',
-                
-                # Fixed: Initialize from GNSS
-                '/sensing/gnss/pose_with_covariance': '/sensing/gnss/pose',
                 '/sensing/imu/imu_data': '/sensing/imu/imu_raw',
                 '/localization/kinematic_state': '/localization/kinematic_state',
             }.items()
