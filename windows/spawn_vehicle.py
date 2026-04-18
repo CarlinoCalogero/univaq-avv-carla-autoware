@@ -44,6 +44,10 @@ def spawn_vehicle(host, port, vehicle_filter, map_name):
     lidar_bp.set_attribute('rotation_frequency', '10')
     lidar_bp.set_attribute('channels', '64')
     lidar_bp.set_attribute('points_per_second', '600000')
+    
+    # ---> CRITICAL FIX: Lock LiDAR generation to exactly 10 Hz
+    lidar_bp.set_attribute('sensor_tick', '0.1')
+    
     lidar_bp.set_attribute('role_name', 'lidar_sensor')
 
     lidar_transform = carla.Transform(carla.Location(x=0, z=2.4))
