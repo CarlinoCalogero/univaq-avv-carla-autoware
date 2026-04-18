@@ -58,6 +58,12 @@ and `carla_bridge.launch.py`
 cp -r ~/projects/Utente/Desktop/univaq-avv-carla-autoware/wsl/carla_bridge.launch.py ~/autoware
 ```
 
+and `fix_ndt_threshold.sh`
+
+```bash
+cp -r ~/projects/univaq-avv-carla-autoware/wsl/fix_ndt_threshold.sh ~/autoware
+```
+
 #### Download CARLA Lanelet2 Maps
 
 Download `point_cloud/Town01.pcd` and `vector_maps/lanelet2/Town01.osm` y-axis inverted maps from [CARLA Autoware Contents](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/) in your Windows os
@@ -232,6 +238,12 @@ Install the carla API (must be done every time since we are on docker)
 
 ```bash
 pip install carla==0.9.15
+```
+
+Patch the NDT score threshold (run once; repeat if the container is recreated)
+
+```bash
+bash fix_ndt_threshold.sh
 ```
 
 Run the bridge node
