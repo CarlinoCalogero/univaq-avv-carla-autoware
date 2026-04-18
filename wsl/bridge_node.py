@@ -67,9 +67,6 @@ class CarlaAutowareBridge(Node):
         self.init_sent = False
         self.last_control_time = 0 
         
-        # ---> ALL TF BROADCASTERS REMOVED <---
-        # Autoware's robot_state_publisher handles this natively.
-        
         self.pub_gnss_pose = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose", 10)
         self.pub_gnss_cov = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose_with_covariance", 10)
         

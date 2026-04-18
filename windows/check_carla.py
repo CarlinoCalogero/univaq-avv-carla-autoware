@@ -3,8 +3,7 @@ import time
 import math
 
 def main():
-    # 1. Connect to CARLA
-    # Using host.docker.internal to bridge from Docker to Windows CARLA
+    # Connect to CARLA
     try:
         client = carla.Client('localhost', 2000)
         client.set_timeout(5.0)
@@ -14,7 +13,7 @@ def main():
         print(f"[ERROR] Connection failed: {e}")
         return
 
-    # 2. Find Ego Vehicle
+    # Find Ego Vehicle
     ego_vehicle = None
     for actor in world.get_actors():
         if actor.attributes.get('role_name') == 'ego_vehicle':
@@ -27,7 +26,7 @@ def main():
 
     print(f"[MONITORING] Vehicle ID: {ego_vehicle.id}")
 
-    # 3. Sensor Callbacks (Define how to print each type)
+    # Sensor Callbacks (Define how to print each type)
     def on_lidar(data):
         print(f"[LIDAR]  Points: {len(data):<6} | TS: {data.timestamp:.3f}")
 
@@ -44,7 +43,7 @@ def main():
     def on_radar(data):
         print(f"[RADAR]  Detections: {len(data):<3} | TS: {data.timestamp:.3f}")
 
-    # 4. Attach Listeners to ALL sensors belonging to the ego_vehicle
+    # Attach Listeners to ALL sensors belonging to the ego_vehicle
     attached_sensors = []
     all_actors = world.get_actors()
     sensors = all_actors.filter('sensor.*')
@@ -80,7 +79,7 @@ def main():
 
     try:
         while True:
-            # 5. Continuous Ground Truth Physics Print
+            # Continuous Ground Truth Physics Print
             v = ego_vehicle.get_velocity()
             speed = math.sqrt(v.x**2 + v.y**2 + v.z**2)
             c = ego_vehicle.get_control()

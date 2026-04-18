@@ -16,7 +16,7 @@ def spawn_vehicle(host, port, vehicle_filter, map_name):
     world = client.get_world()
     blueprint_library = world.get_blueprint_library()
 
-    # 1. Spawn Ego Vehicle
+    # Spawn Ego Vehicle
     vehicle_bp = blueprint_library.filter(vehicle_filter)[0]
     vehicle_bp.set_attribute("role_name", "ego_vehicle") 
 
@@ -37,7 +37,7 @@ def spawn_vehicle(host, port, vehicle_filter, map_name):
     
     print(f"[SPAWN] Ego Vehicle spawned: {vehicle.id} at {spawn_point.location}")
 
-    # 2. Attach LiDAR (Required for Autoware 'align server')
+    # Attach LiDAR (Required for Autoware 'align server')
     print("[SPAWN] Attaching LiDAR sensor...")
     lidar_bp = blueprint_library.find('sensor.lidar.ray_cast')
     lidar_bp.set_attribute('range', '100')
@@ -45,7 +45,7 @@ def spawn_vehicle(host, port, vehicle_filter, map_name):
     lidar_bp.set_attribute('channels', '64')
     lidar_bp.set_attribute('points_per_second', '600000')
     
-    # ---> CRITICAL FIX: Lock LiDAR generation to exactly 10 Hz
+    # Lock LiDAR generation to exactly 10 Hz
     lidar_bp.set_attribute('sensor_tick', '0.1')
     
     lidar_bp.set_attribute('role_name', 'lidar_sensor')
