@@ -7,4 +7,5 @@ open carla double click
 
 user@docker-desktop:/workspace$ ros2 launch ./carla_bridge.launch.py vehicle_name:=ego_vehicle map_path:=/workspace/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=carla_sensor_kit
 
+pip install carla==0.9.15
 user@docker-desktop:/workspace$ python3 bridge_node.py --ros-args -p carla_host:="host.docker.internal"

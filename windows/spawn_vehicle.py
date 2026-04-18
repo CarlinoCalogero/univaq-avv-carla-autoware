@@ -29,6 +29,12 @@ def spawn_vehicle(host, port, vehicle_filter, map_name):
     spawn_point = world.get_map().get_spawn_points()[0]
     vehicle = world.spawn_actor(vehicle_bp, spawn_point)
     vehicle.set_autopilot(False)
+    
+    # FORCE BRAKES ON TO PREVENT "VEHICLE NOT STOPPED" ERROR IN AUTOWARE
+    ctrl = carla.VehicleControl()
+    ctrl.brake = 1.0
+    vehicle.apply_control(ctrl)
+    
     print(f"[SPAWN] Ego Vehicle spawned: {vehicle.id} at {spawn_point.location}")
 
     # 2. Attach LiDAR (Required for Autoware 'align server')
@@ -53,7 +59,7 @@ def spawn_vehicle(host, port, vehicle_filter, map_name):
             loc = vehicle.get_location()
             v = vehicle.get_velocity()
             speed = (v.x**2 + v.y**2 + v.z**2)**0.5
-            print(f"\r[SPAWN] Status: Speed={speed:.2f} m/s | Location: x={loc.x:.1f}, y={loc.y:.1f}", end="")
+            print(f"\r[SPAWN] Status: Speed={speed:.2f} m/s | Location: x={loc.x:.1f}, y={loc.y:.1f}   ", end="")
             time.sleep(0.5)
     except KeyboardInterrupt:
         print("\n[SPAWN] Destroying actors...")

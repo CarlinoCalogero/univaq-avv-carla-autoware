@@ -24,7 +24,7 @@ def generate_launch_description():
                 'launch_vehicle_interface': 'false',
                 'launch_perception': 'false',
                 
-                # RE-MAPPINGS FOR INITIALIZATION
+                # RE-MAPPINGS FOR INITIALIZATION AND SENSORS
                 '/sensing/gnss/pose_with_covariance': '/sensing/gnss/pose',
                 '/vehicle/status/velocity': '/vehicle/status/velocity_status',
                 '/vehicle/status/steering': '/vehicle/status/steering_status',

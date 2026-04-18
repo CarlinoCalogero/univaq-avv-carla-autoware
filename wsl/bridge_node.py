@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-CARLA <-> Autoware Bridge Node (Automated Initialization & Extensive Debug Version)
+CARLA <-> Autoware Bridge Node (Automated Initialization & Point Cloud)
 """
 
 import math
 import os
 import rclpy
+import numpy as np
 from rclpy.node import Node
 from tf2_ros import TransformBroadcaster
 
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu, NavSatFix
+from sensor_msgs.msg import Imu, NavSatFix, PointCloud2, PointField
 from std_msgs.msg import Header
 from autoware_adapi_v1_msgs.srv import InitializeLocalization
 
@@ -57,19 +58,26 @@ class CarlaAutowareBridge(Node):
             return
 
         self.ego_vehicle = None
+        self.lidar_sensor = None
         self.localization_initialized = False
         
         # Publishers
         self.tf_broadcaster = TransformBroadcaster(self)
         self.pub_gnss_pose = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose", 10)
+        
+        # FIX: Publish directly to pose_with_covariance to bypass namespace remapping bugs in the Autoware API
+        self.pub_gnss_cov = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose_with_covariance", 10)
+        
         self.pub_imu = self.create_publisher(Imu, "/sensing/imu/imu_raw", 10)
         self.pub_odom = self.create_publisher(Odometry, "/localization/kinematic_state", 10)
         self.pub_vel = self.create_publisher(VelocityReport, "/vehicle/status/velocity_status", 10)
         self.pub_steer = self.create_publisher(SteeringReport, "/vehicle/status/steering_status", 10)
+        
+        # Bypass Autoware's sensing pipeline completely to avoid crop box errors.
+        self.pub_lidar = self.create_publisher(PointCloud2, "/sensing/lidar/concatenated/pointcloud", 10)
 
         # Autoware Initialization Service Client
         self.init_cli = self.create_client(InitializeLocalization, "/api/localization/initialize")
-        print("[BRIDGE] Waiting for Autoware '/api/localization/initialize' service...")
 
         # Subscriptions
         self.create_subscription(Control, "/control/command/control_cmd", self._on_control_command, 10)
@@ -80,29 +88,71 @@ class CarlaAutowareBridge(Node):
         
         print("[BRIDGE] Node fully initialized. Searching for ego_vehicle in CARLA...")
 
-    def _find_ego_vehicle(self):
+    def _find_actors(self):
         actors = self.world.get_actors()
+        found_ego = False
         for actor in actors:
             if actor.attributes.get("role_name") == self.role_name:
-                self.ego_vehicle = actor
-                print(f"[BRIDGE] Found vehicle with role '{self.role_name}' (ID: {actor.id})")
-                return True
-        return False
+                if not self.ego_vehicle:
+                    self.ego_vehicle = actor
+                    print(f"[BRIDGE] Found vehicle with role '{self.role_name}' (ID: {actor.id})")
+                found_ego = True
+            elif actor.attributes.get("role_name") == "lidar_sensor":
+                if not self.lidar_sensor:
+                    self.lidar_sensor = actor
+                    self.lidar_sensor.listen(self._on_lidar_data)
+                    print(f"[BRIDGE] Found lidar_sensor (ID: {actor.id}). Started publishing PointCloud2.")
+        return found_ego
+
+    def _on_lidar_data(self, carla_lidar_measurement):
+        """Converts CARLA raw bytes into a tightly packed Autoware PointXYZIRC."""
+        raw_data = np.frombuffer(carla_lidar_measurement.raw_data, dtype=np.float32)
+        points = np.reshape(raw_data, (-1, 4))
+        num_points = points.shape[0]
+
+        # FIX: Tightly packed structure expected by ROS 2 point_cloud_msg_wrapper (NO C++ Padding allowed)
+        dt = np.dtype({
+            'names': ['x', 'y', 'z', 'intensity', 'return_type', 'channel', 'time_stamp'],
+            'formats': ['<f4', '<f4', '<f4', 'u1', 'u1', '<u2', '<u4'],
+            'offsets': [0, 4, 8, 12, 13, 14, 16],
+            'itemsize': 32
+        })
+        
+        structured_points = np.zeros(num_points, dtype=dt)
+        structured_points['x'] = points[:, 0]
+        structured_points['y'] = -points[:, 1]  # CARLA is left-handed, ROS is right-handed
+        structured_points['z'] = points[:, 2]
+        structured_points['intensity'] = (points[:, 3] * 255.0).astype(np.uint8)
+
+        msg = PointCloud2()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "velodyne_top"
+        msg.height = 1
+        msg.width = num_points
+        msg.is_dense = True
+        msg.is_bigendian = False
+        msg.fields = [
+            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
+            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
+            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
+            PointField(name='intensity', offset=12, datatype=PointField.UINT8, count=1),
+            PointField(name='return_type', offset=13, datatype=PointField.UINT8, count=1),
+            PointField(name='channel', offset=14, datatype=PointField.UINT16, count=1),
+            PointField(name='time_stamp', offset=16, datatype=PointField.UINT32, count=1),
+        ]
+        msg.point_step = 32
+        msg.row_step = msg.point_step * num_points
+        msg.data = structured_points.tobytes()
+        
+        self.pub_lidar.publish(msg)
 
     def _attempt_autoware_initialization(self):
-        """Service loop to force Autoware localization to turn on."""
-        if self.localization_initialized:
-            return
-
-        if not self.ego_vehicle:
-            print("[BRIDGE] Initialization waiting: Vehicle not yet found.")
+        if self.localization_initialized or not self.ego_vehicle:
             return
 
         if not self.init_cli.service_is_ready():
-            print("[BRIDGE] Initialization waiting: Autoware service not ready.")
             return
 
-        # Get current CARLA pose for the request
         transform = self.ego_vehicle.get_transform()
         loc = transform.location
         rot = transform.rotation
@@ -117,7 +167,7 @@ class CarlaAutowareBridge(Node):
         p.pose.pose.orientation.z = math.sin(yaw / 2.0)
         p.pose.pose.orientation.w = math.cos(yaw / 2.0)
         
-        req.pose = [p] # The ADAPI Initializer expects a list of poses
+        req.pose = [p] 
 
         print(f"[BRIDGE] ---> Sending Initialization Request to Autoware at ({loc.x:.2f}, {-loc.y:.2f})")
         future = self.init_cli.call_async(req)
@@ -136,19 +186,14 @@ class CarlaAutowareBridge(Node):
 
     def _on_control_command(self, msg):
         if self.ego_vehicle:
-            # Throttle and steering conversion
             ctrl = carla.VehicleControl()
             ctrl.throttle = min(msg.longitudinal.velocity * 0.1, 1.0)
             ctrl.steer = -msg.lateral.steering_tire_angle / CARLA_MAX_STEER_RAD
             self.ego_vehicle.apply_control(ctrl)
-            # Print command every few seconds to verify Autoware is "driving"
-            if self.get_clock().now().nanoseconds % 5000000000 < 50000000:
-                print(f"[BRIDGE] Receiving control: Speed={msg.longitudinal.velocity:.2f}, Steer={ctrl.steer:.2f}")
 
     def _publish_vehicle_state(self):
-        if not self.ego_vehicle:
-            if not self._find_ego_vehicle():
-                return
+        if not self._find_actors():
+            return
 
         now = self.get_clock().now().to_msg()
         transform = self.ego_vehicle.get_transform()
@@ -157,7 +202,6 @@ class CarlaAutowareBridge(Node):
         rot = transform.rotation
         yaw = math.radians(-rot.yaw)
 
-        # Force speed to 0 if car is jittering (prevents 'vehicle not stopped' errors)
         real_speed = math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2)
         reported_speed = 0.0 if real_speed < 0.2 else real_speed
 
@@ -167,13 +211,32 @@ class CarlaAutowareBridge(Node):
         t.transform.translation.x, t.transform.translation.y, t.transform.translation.z = loc.x, -loc.y, loc.z
         t.transform.rotation.z, t.transform.rotation.w = math.sin(yaw/2), math.cos(yaw/2)
         self.tf_broadcaster.sendTransform(t)
+        
+        # TF base_link -> velodyne_top (Static LiDAR mount point)
+        t_lidar = TransformStamped()
+        t_lidar.header.stamp, t_lidar.header.frame_id, t_lidar.child_frame_id = now, "base_link", "velodyne_top"
+        t_lidar.transform.translation.z = 2.4
+        t_lidar.transform.rotation.w = 1.0
+        self.tf_broadcaster.sendTransform(t_lidar)
 
         # GNSS Pose (Initial guess for Autoware)
         gnss_pose = PoseWithCovarianceStamped()
         gnss_pose.header.stamp, gnss_pose.header.frame_id = now, "map"
         gnss_pose.pose.pose.position.x, gnss_pose.pose.pose.position.y = loc.x, -loc.y
         gnss_pose.pose.pose.orientation = t.transform.rotation
+        
+        # INJECT DUMMY COVARIANCE (Trust this sensor)
+        gnss_pose.pose.covariance = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.05
+        ]
+        
         self.pub_gnss_pose.publish(gnss_pose)
+        self.pub_gnss_cov.publish(gnss_pose) # Bypasses any nested namespace issues
 
         # Velocity and IMU
         v_rep = VelocityReport()
