@@ -9,34 +9,33 @@ def generate_launch_description():
     autoware_pkg = get_package_share_directory('autoware_launch')
     
     return LaunchDescription([
-        # Catch the arguments from the command line
         DeclareLaunchArgument('map_path', description='Path to the map'),
         DeclareLaunchArgument('vehicle_model', description='Vehicle model'),
         DeclareLaunchArgument('sensor_model', description='Sensor model'),
-        DeclareLaunchArgument('vehicle_name', default_value='ego_vehicle', description='Vehicle name'),
+        DeclareLaunchArgument('vehicle_name', default_value='ego_vehicle'),
 
-        # Launch Autoware
         IncludeLaunchDescription(
             AnyLaunchDescriptionSource(
                 os.path.join(autoware_pkg, 'launch', 'autoware.launch.xml')
             ),
-            # Pass EVERYTHING down to the Autoware launch file
             launch_arguments={
-                # Pass through the CLI inputs
                 'map_path': LaunchConfiguration('map_path'),
                 'vehicle_model': LaunchConfiguration('vehicle_model'),
                 'sensor_model': LaunchConfiguration('sensor_model'),
                 'vehicle_name': LaunchConfiguration('vehicle_name'),
                 
-                # Inject our static overrides
                 'launch_vehicle_interface': 'false',
-                'launch_perception': 'false',  # <-- NEW: Bypass the missing ML models
+                'launch_perception': 'false',
+                
+                # Topic Remappings
                 '/vehicle/status/velocity': '/vehicle/status/velocity_status',
                 '/vehicle/status/steering': '/vehicle/status/steering_status',
                 '/control/command': '/control/command/control_cmd',
-                '/sensing/gnss/pose_raw': '/sensing/gnss/pose',
+                
+                # Fixed: Initialize from GNSS
+                '/sensing/gnss/pose_with_covariance': '/sensing/gnss/pose',
                 '/sensing/imu/imu_data': '/sensing/imu/imu_raw',
-                '/localization/odom': '/localization/kinematic_state',
+                '/localization/kinematic_state': '/localization/kinematic_state',
             }.items()
         )
     ])
