@@ -68,11 +68,6 @@ class CarlaAutowareBridge(Node):
         self.init_sent = False
         self.last_control_time = 0 
         
-        # ==========================================================
-        # CRITICAL FIX: STATIC TRANSFORM
-        # This prevents Autoware from dropping LiDAR point clouds 
-        # due to dynamic timestamp extrapolation errors.
-        # ==========================================================
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         t_lidar = TransformStamped()
         t_lidar.header.stamp = self.get_clock().now().to_msg()
@@ -217,18 +212,18 @@ class CarlaAutowareBridge(Node):
                 ctrl.brake = 0.0
                 ctrl.hand_brake = False
                 ctrl.reverse = False
-                print(f"ACTION: Throttle ({ctrl.throttle:.2f})", end="")
+                print(f"ACTION: Throttle ({ctrl.throttle:.2f})   ", end="")
             elif target_vel < -0.1:
                 ctrl.throttle = min(abs(target_vel) * 0.1, 1.0)
                 ctrl.brake = 0.0
                 ctrl.hand_brake = False
                 ctrl.reverse = True
-                print(f"ACTION: Reverse  ({ctrl.throttle:.2f})", end="")
+                print(f"ACTION: Reverse  ({ctrl.throttle:.2f})   ", end="")
             else:
                 ctrl.throttle = 0.0
                 ctrl.brake = 1.0 
                 ctrl.hand_brake = True
-                print("ACTION: HARD BRAKE LOCKED", end="")
+                print("ACTION: HARD BRAKE LOCKED        ", end="")
                 
             ctrl.steer = -msg.lateral.steering_tire_angle / CARLA_MAX_STEER_RAD
             self.ego_vehicle.apply_control(ctrl)
@@ -265,27 +260,33 @@ class CarlaAutowareBridge(Node):
 
         yaw_rad = math.radians(-rot.yaw)
         
-        gnss_pose = PoseWithCovarianceStamped()
-        gnss_pose.header.stamp, gnss_pose.header.frame_id = now, "map"
-        gnss_pose.pose.pose.position.x = loc.x
-        gnss_pose.pose.pose.position.y = -loc.y
-        gnss_pose.pose.pose.position.z = loc.z 
-        
-        gnss_pose.pose.pose.orientation.w = math.cos(yaw_rad/2)
-        gnss_pose.pose.pose.orientation.x = 0.0
-        gnss_pose.pose.pose.orientation.y = 0.0
-        gnss_pose.pose.pose.orientation.z = math.sin(yaw_rad/2)
-        
-        gnss_pose.pose.covariance = [
-            1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.05
-        ]
-        self.pub_gnss_pose.publish(gnss_pose)
-        self.pub_gnss_cov.publish(gnss_pose) 
+        # ==========================================================
+        # CRITICAL FIX: SENSOR FUSION FIGHT
+        # Only publish GNSS until the system wakes up. Once Autoware
+        # accepts the LiDAR localization, we cut GNSS so they don't fight.
+        # ==========================================================
+        if not self.localization_initialized:
+            gnss_pose = PoseWithCovarianceStamped()
+            gnss_pose.header.stamp, gnss_pose.header.frame_id = now, "map"
+            gnss_pose.pose.pose.position.x = loc.x
+            gnss_pose.pose.pose.position.y = -loc.y
+            gnss_pose.pose.pose.position.z = loc.z 
+            
+            gnss_pose.pose.pose.orientation.w = math.cos(yaw_rad/2)
+            gnss_pose.pose.pose.orientation.x = 0.0
+            gnss_pose.pose.pose.orientation.y = 0.0
+            gnss_pose.pose.pose.orientation.z = math.sin(yaw_rad/2)
+            
+            gnss_pose.pose.covariance = [
+                1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.05
+            ]
+            self.pub_gnss_pose.publish(gnss_pose)
+            self.pub_gnss_cov.publish(gnss_pose) 
 
         v_rep = VelocityReport()
         v_rep.header.stamp, v_rep.header.frame_id = now, "base_link"
@@ -300,7 +301,7 @@ class CarlaAutowareBridge(Node):
 
         imu = Imu()
         imu.header.stamp = now
-        imu.header.frame_id = "tamagawa/imu_link" 
+        imu.header.frame_id = "base_link" 
         
         imu.orientation.w = math.cos(yaw_rad/2)
         imu.orientation.x = 0.0
