@@ -150,23 +150,13 @@ python .\windows\follow_camera.py
 
 **Keep this terminal open** — closing it terminates the camera follow.
 
-### WSL: Send a Dummy Command (Test)
+### Windows: Check carla sensors
 
-In your Ubuntu 22.04 in WSL2 terminal run the following
+If you want to check Carla sensors run
 
-```bash
-cd ~/projects/univaq-avv-carla-autoware
-source /opt/ros/humble/setup.bash
-source scripts/get_host_ip.sh
-
-python3 wsl/send_dummy_command.py \
-    --carla-host $CARLA_HOST \
-    --target-speed 5.0 \
-    --duration 10
+```cmd
+python .\windows\check_carla.py
 ```
-
-This publishes a forward drive command (5 m/s) for 10 seconds.  
-**Watch the CARLA window** — the car should start moving forward.
 
 ---
 
@@ -238,4 +228,49 @@ Run the bridge node
 
 ```bash
 python3 bridge_node.py --ros-args -p carla_host:="host.docker.internal"
+```
+
+### Checking the Bridge (The Translator)
+
+The bridge takes CARLA data and publishes it as ROS 2 Topics. You check these in a new terminal inside your Docker container.
+
+List all active topics
+
+```bash
+ros2 topic list
+```
+
+These are the most critical topics for vehicle stability:
+
+| Topic Name | Purpose |
+|------------|---------|
+| `/vehicle/status/velocity_status` |    Current Speed     |
+| `/sensing/imu/imu_raw` |    Acceleration/Tilt     |
+| `/sensing/lidar/concatenated/pointcloud` |    3D Vision     |
+| `/sensing/gnss/pose` | Absolute Map Position |
+
+Command Example
+
+```bash
+ros2 topic echo /vehicle/status/velocity_status
+```
+
+### Checking Autoware (The Brain)
+
+Autoware processes the bridge data and publishes its own "Internal State." If the Bridge sends 0.0 but Autoware shows movement, the error is here.
+
+#### Check Autoware's calculated position/speed
+
+Autoware fuses IMU, Wheel Speed, and LiDAR into a single "Kinematic State."
+
+```bash
+ros2 topic echo /localization/kinematic_state
+```
+
+#### Check the NDT Alignment Score
+
+NDT is what "locks" the car to the map using LiDAR. If the score is low, the car will jump.
+
+```bash
+ros2 topic echo /localization/pose_estimator/ndt_scan_matcher/status
 ```

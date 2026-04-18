@@ -8,9 +8,8 @@ import os
 import rclpy
 import numpy as np
 from rclpy.node import Node
-from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
-from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, NavSatFix, PointCloud2, PointField
 from std_msgs.msg import Header
@@ -68,14 +67,8 @@ class CarlaAutowareBridge(Node):
         self.init_sent = False
         self.last_control_time = 0 
         
-        self.static_tf_broadcaster = StaticTransformBroadcaster(self)
-        t_lidar = TransformStamped()
-        t_lidar.header.stamp = self.get_clock().now().to_msg()
-        t_lidar.header.frame_id = "base_link"
-        t_lidar.child_frame_id = "velodyne_top"
-        t_lidar.transform.translation.z = 2.4
-        t_lidar.transform.rotation.w = 1.0
-        self.static_tf_broadcaster.sendTransform(t_lidar)
+        # ---> ALL TF BROADCASTERS REMOVED <---
+        # Autoware's robot_state_publisher handles this natively.
         
         self.pub_gnss_pose = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose", 10)
         self.pub_gnss_cov = self.create_publisher(PoseWithCovarianceStamped, "/sensing/gnss/pose_with_covariance", 10)
@@ -260,11 +253,7 @@ class CarlaAutowareBridge(Node):
 
         yaw_rad = math.radians(-rot.yaw)
         
-        # ==========================================================
-        # CRITICAL FIX: SENSOR FUSION FIGHT
-        # Only publish GNSS until the system wakes up. Once Autoware
-        # accepts the LiDAR localization, we cut GNSS so they don't fight.
-        # ==========================================================
+        # Only publish GNSS until the system wakes up
         if not self.localization_initialized:
             gnss_pose = PoseWithCovarianceStamped()
             gnss_pose.header.stamp, gnss_pose.header.frame_id = now, "map"
