@@ -218,8 +218,11 @@ class CarlaAutowareBridge(Node):
         if (current_time_ns - self.last_control_time) > 500_000_000:
             ctrl = carla.VehicleControl()
             ctrl.throttle = 0.0
-            ctrl.brake = 1.0
-            ctrl.hand_brake = True
+            ctrl.steer = 0.0
+            ctrl.brake = 1.0           
+            ctrl.hand_brake = True     
+            ctrl.manual_gear_shift = True
+            ctrl.gear = 0
             self.ego_vehicle.apply_control(ctrl)
 
         transform = self.ego_vehicle.get_transform()
