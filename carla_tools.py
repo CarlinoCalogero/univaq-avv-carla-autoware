@@ -20,7 +20,7 @@ except ImportError:
 def get_recordings_dir() -> str:
     """Returns the absolute path to the recordings/carla directory, creating it if needed."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    recordings_dir = os.path.join(script_dir, "recordings", "carla")
+    recordings_dir = os.path.join(script_dir, "recordings")
     os.makedirs(recordings_dir, exist_ok=True)
     return recordings_dir
 
@@ -48,7 +48,7 @@ def command_record(args):
     client = connect_to_carla(args.host, args.port)
     
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_filename = f"my_snapshot_{timestamp}.log"
+    log_filename = f"carla_snapshot_{timestamp}.log"
     final_save_path = os.path.join(get_recordings_dir(), log_filename).replace('\\', '/')
 
     print(f"Saving CARLA recording to: {final_save_path}")
@@ -68,39 +68,30 @@ def command_record(args):
         print(f"Recording saved: {final_save_path}")
 
 def command_replay(args):
-    final_log_path = get_valid_log_path(args.recording)
-    print(f"Replaying CARLA recording: {final_log_path}")
+    final_bag_path = get_valid_bag_path(args.bag)
+    print(f"Replaying Autoware bag: {final_bag_path}")
 
-    client = connect_to_carla(args.host, args.port)
-    client.set_replayer_time_factor(args.time_factor)
+    # ADDED: "--clock" is strictly required for Autoware to accept historical data!
+    cmd = ["ros2", "bag", "play", final_bag_path, "-r", str(args.rate), "--clock"]
     
-    # Start replay
-    result = client.replay_file(final_log_path, args.start, args.duration, args.camera)
-    print(result)
+    # CHANGED: We removed stderr=subprocess.DEVNULL. 
+    # Now, if ROS 2 fails to play the bag, it will actually print the error to your screen!
+    process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL)
     print("Playback started. Press Ctrl+C to stop the replay.")
 
-    # Record the exact moment we started
     start_time = time.time()
-
     try:
-        while True:
-            # 1. Calculate how much real-world time has passed
+        while process.poll() is None:
             real_elapsed = time.time() - start_time
-            
-            # 2. Multiply by the playback speed to get simulation time
-            sim_elapsed = int(real_elapsed * args.time_factor)
-            
-            # 3. Format and print
+            sim_elapsed = int(real_elapsed * args.rate)
             mins, secs = divmod(sim_elapsed, 60)
-            
-            # We include the speed multiplier in the printout so the user knows!
-            print(f"\rReplay time: {mins:02d}:{secs:02d} (Speed: {args.time_factor}x)", end='', flush=True)
-            
+            print(f"\rReplay time: {mins:02d}:{secs:02d} (Speed: {args.rate}x)", end='', flush=True)
             time.sleep(1)
-            
+        print("\nPlayback finished naturally.")
     except KeyboardInterrupt:
         print("\nStopping playback...")
-        client.stop_replayer(keep_actors=False)
+        process.terminate()
+        process.wait()
         print("Playback stopped successfully.")
 
 def command_info(args):

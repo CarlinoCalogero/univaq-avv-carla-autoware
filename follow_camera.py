@@ -78,7 +78,7 @@ def follow_camera(host: str, port: int, mode: str, offset_back: float, offset_z:
 
     print(f"Connected to CARLA. Map: {world.get_map().name}")
     print(f"Camera mode : {mode}")
-    print(f"Looking for ego_vehicle ... (run spawn_vehicle.py if not spawned yet)")
+    print(f"Looking for ego_vehicle ... ")
     print("Press Ctrl+C to stop.\n")
 
     ego = None
