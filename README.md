@@ -773,7 +773,7 @@ python carla_tools.py record [options]
 
 * `--additional_data`: (Optional flag) If included, records additional data including: linear and angular velocity of vehicles and pedestrians, traffic light time settings, execution time, actors' trigger and bounding boxes, and physics controls for vehicles.
 
-#### replay
+#### `replay`
 
 Replays a saved `.log` file inside the simulator.
 
@@ -791,7 +791,7 @@ python carla_tools.py replay --recording <file.log> [options]
 
 * `--time_factor`: (Optional) Playback speed multiplier. For example, `2.0` is double speed. (Default: `1.0`).
 
-#### info
+#### `info`
 
 Extracts data from a binary .log file into a readable .txt file.
 
@@ -813,7 +813,7 @@ Run this script inside your Ubuntu / WSL2 terminal to interact with ROS 2.
 source /opt/ros/humble/setup.bash
 ```
 
-#### record
+#### `record`
 
 Starts a new ROS 2 bag recording in the background. By default, it records the core ADAS topics: 
 1. `/planning/scenario_planning/trajectory`
@@ -837,7 +837,7 @@ Example:
 python3 autoware_tools.py record --topics /sensing/lidar/top/pointcloud_raw /vehicle/status/velocity_status
 ```
 
-#### replay
+#### `replay`
 
 Replays an existing ROS 2 bag back into the ROS network. (The tool automatically injects the `--clock` flag so Autoware accepts the historical data).
 
@@ -849,7 +849,7 @@ python3 autoware_tools.py replay --bag <bag_folder_name> [options]
 
 * `--rate`: (Optional) Playback speed multiplier. For example, `2.0` plays the bag at 2x speed. (Default: `1.0`).
 
-#### info
+#### `info`
 
 Extracts the ROS 2 bag metadata (total duration, message counts, topic list) and saves it as a `.txt` file.
 
