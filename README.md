@@ -509,7 +509,7 @@ export RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity} {time}] [{name}]: {message} ({
 For more options, see [here](https://docs.ros.org/en/rolling/Tutorials/Demos/Logging-and-logger-configuration.html#console-output-formatting).
 
 
-#### Colorized GoogleTest output
+### Colorized GoogleTest output
 Add 
 
 ```bash
@@ -522,7 +522,7 @@ For more details, refer to [Advanced GoogleTest Topics: Colored Terminal Output]
 
 This is useful when running tests with colcon test.
 
-### Configure the autoware_carla_interface
+## Configure the autoware_carla_interface
 
 By default, the interface expects the CARLA server to be running on `localhost:2000`. You need to point it to your Windows host IP.
 
@@ -590,7 +590,7 @@ source install/setup.bash
 Open a terminal in your windows folder and create a Python environment using Python 3.10, then install the requirements
 
 ```cmd
-pip install -r .\requirements.txt
+pip install -r .\scripts\windows\requirements.txt
 ```
 
 *Note: Always source this environment when running python scripts from Windows.*
@@ -618,6 +618,23 @@ cd C:\Users\<YourUsername>\Documents\CARLA_0.9.15\WindowsNoEditor
 ```
 
 **If you omit `-RenderOffScreen` you can see the CARLA window popping up**
+
+3. Open a WSL terminal, set up the environment
+
+```bash
+cd ~/autoware
+sudo ip link set lo multicast on
+sudo sysctl -w net.core.rmem_max=2147483647
+sudo sysctl -w net.ipv4.ipfrag_time=3
+sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
+source install/setup.bash
+```
+
+4. Run Autoware with CARLA
+
+```bash
+ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=carla_sensor_kit simulator_type:=carla
+```
 
 If you want the CARLA spectator camera to automatically track the Autoware vehicle as it drives, open a **new Windows Command Prompt**, navigate to your script folder
 
@@ -664,23 +681,6 @@ You can tweak the exact position and update speed using the following arguments:
 python follow_camera.py --offset-back 5.0 --offset-z 2.0
 ```
 
-3. Open a WSL terminal, set up the environment
-
-```bash
-cd ~/autoware
-sudo ip link set lo multicast on
-sudo sysctl -w net.core.rmem_max=2147483647
-sudo sysctl -w net.ipv4.ipfrag_time=3
-sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
-source install/setup.bash
-```
-
-4. Run Autoware with CARLA
-
-```bash
-ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=carla_sensor_kit simulator_type:=carla
-```
-
 5. Set initial pose (Init by GNSS)
 
 6. Set goal position
@@ -710,25 +710,11 @@ sync_record.bat
 
 All data is saved automatically in a generated `recordings/` folder next to your scripts.
 
-## Replaying Scenarios (Simulator vs. Brain)
-
-Because these systems are separate, you cannot replay both at the same time. Replaying a scenario requires choosing whether you want to watch the physical car in the simulator, or the AI's logic in RViz.
-
-### The "Ghost Conflict" (Why they must be separate)
-
-If you play a ROS 2 bag while Autoware is actively connected to a live CARLA simulation, you create a massive data collision.
-
-* The live CARLA simulator tells Autoware: **"I am at coordinates X, Y, and my speed is 0."**
-
-* Your ROS 2 bag tells Autoware at the exact same time: **"No, I am at coordinates A, B, and my speed is 30!"**
-
-Autoware's localization module will panic due to the conflicting realities, trigger the emergency safety systems, and lock the brakes.
-
-### Scenario A: Watch the 3D Simulator (CARLA)
+## Replaying Scenarios
 
 If you want to watch the physics, traffic, and vehicle movement exactly as it happened in the 3D world:
 
-1. Keep the CARLA server running.
+1. Close Autoware and CARLA and start a new CARLA session.
 
 2. In a Windows Command Prompt, run:
 
@@ -737,28 +723,6 @@ python scripts/windows/carla_tools.py replay --recording your_snapshot.log
 ```
 
 3. CARLA will automatically reset the world, teleport the car to the starting line, and replay the physics. Autoware does not need to be running for this.
-
-### Scenario B: Watch the AI's Logic (Autoware)
-
-If you want to see the trajectory planning, bounding boxes, and sensor data the AI was processing in RViz:
-
-1. Go to your main Autoware terminal and press `Ctrl+C` to cleanly shut down the live simulation (this will close RViz).
-
-2. Start Autoware back up, but swap `e2e_simulator.launch.xml` for `logging_simulator.launch.xml`:
-
-```bash
-ros2 launch autoware_launch logging_simulator.launch.xml map_path:=$HOME/autoware/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=carla_sensor_kit
-```
-
-3. RViz will immediately pop back open with your map loaded.
-
-4. In a new WSL2 terminal, run:
-
-```bash
-python3 autoware_tools.py replay --bag your_bag_folder
-```
-
-**Crucial Note: The `autoware_tools.py` replay script automatically injects the `--clock` flag to force Autoware to accept historical timestamps.**
 
 ## CLI Tools Reference
 
@@ -849,18 +813,6 @@ Example:
 ```bash
 python3 autoware_tools.py record --topics /sensing/lidar/top/pointcloud_raw /vehicle/status/velocity_status
 ```
-
-#### `replay`
-
-Replays an existing ROS 2 bag back into the ROS network. (The tool automatically injects the `--clock` flag so Autoware accepts the historical data).
-
-```bash
-python3 autoware_tools.py replay --bag <bag_folder_name> [options]
-```
-
-* `--bag`: **(Required)** The exact name of the bag folder you want to replay.
-
-* `--rate`: (Optional) Playback speed multiplier. For example, `2.0` plays the bag at 2x speed. (Default: `1.0`).
 
 #### `info`
 

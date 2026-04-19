@@ -75,30 +75,6 @@ def command_record(args):
         process.wait() # Ensure the bag closes cleanly to avoid corruption
         print(f"Bag saved successfully: {final_save_path}")
 
-def command_replay(args):
-    final_bag_path = get_valid_bag_path(args.bag)
-    print(f"Replaying Autoware bag: {final_bag_path}")
-
-    cmd = ["ros2", "bag", "play", final_bag_path, "-r", str(args.rate)]
-    
-    process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print("Playback started. Press Ctrl+C to stop the replay.")
-
-    start_time = time.time()
-    try:
-        while process.poll() is None:
-            real_elapsed = time.time() - start_time
-            sim_elapsed = int(real_elapsed * args.rate)
-            mins, secs = divmod(sim_elapsed, 60)
-            print(f"\rReplay time: {mins:02d}:{secs:02d} (Speed: {args.rate}x)", end='', flush=True)
-            time.sleep(1)
-        print("\nPlayback finished naturally.")
-    except KeyboardInterrupt:
-        print("\nStopping playback...")
-        process.terminate()
-        process.wait()
-        print("Playback stopped successfully.")
-
 def command_info(args):
     final_bag_path = get_valid_bag_path(args.bag)
     print(f"Extracting metadata from '{final_bag_path}'...")
@@ -129,12 +105,6 @@ if __name__ == "__main__":
     record_parser.add_argument("--all", action='store_true', help="Record ALL topics (Warning: Massive file size!)")
     record_parser.add_argument("--topics", nargs='+', default=DEFAULT_TOPICS, help="Specific topics to record (space-separated)")
     record_parser.set_defaults(func=command_record)
-
-    # --- Replay Parser ---
-    replay_parser = subparsers.add_parser("replay", help="Replay an existing ROS 2 bag")
-    replay_parser.add_argument("--bag", type=str, required=True, help="The bag folder name to replay")
-    replay_parser.add_argument("--rate", type=float, default=1.0, help="Playback speed multiplier")
-    replay_parser.set_defaults(func=command_replay)
 
     # --- Info Parser ---
     info_parser = subparsers.add_parser("info", help="Extract bag info to a text file")
