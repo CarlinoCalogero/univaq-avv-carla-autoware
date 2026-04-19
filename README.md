@@ -14,7 +14,7 @@ A complete, cross-platform development environment bridging the CARLA simulator 
 9. [Set up Ubuntu 22.04 WSL Workspace](#set-up-ubuntu-2204-wsl-workspace)
 10. [Run](#run)
 11. [Data Collection & Synchronization](#data-collection--synchronization-sync_recordbat)
-12. [Replaying Scenarios (Simulator vs. Brain)](#replaying-scenarios-simulator-vs-brain)
+12. [Replaying Scenarios](#replaying-scenarios)
 13. [CLI Tools Reference](#cli-tools-reference)
 
 ---
