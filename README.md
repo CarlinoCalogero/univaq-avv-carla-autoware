@@ -1,336 +1,620 @@
-# CARLA–Autoware Bridge
+# Install ubuntu 22.04 for wsl
+Go to this [link](https://releases.ubuntu.com/22.04/) and download the WSL image `64-bit PC (AMD64) WSL image`. Then double click on it after download and follow installation instructions
 
-A cross-environment autonomous driving simulation pipeline that connects the **CARLA simulator** (Windows) to the **Autoware** autonomous vehicle stack (WSL2/Docker) via a custom ROS 2 bridge node.
+# Download carla for windows
+Download [CARLA_0.9.15.zip](https://github.com/carla-simulator/carla/releases/tag/0.9.15/), unzip it in a handy location on your Windows pc
 
-> **Origin:** University of L'Aquila (univaq-avv-carla-autoware)
+# Install ros2 in ubuntu 22.04 wsl
+The following steps are taken from this [reference](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html) documentation.
 
----
+You must execute all the following command in your Ubuntu 22.04 wsl terminal.
 
-## Table of Contents
-
-- [Architecture](#architecture)
-- [Data Flow](#data-flow)
-- [Project Structure](#project-structure)
-- [Setup](#setup)
-- [Running the Bridge](#running-the-bridge)
-- [Diagnostics](#diagnostics)
-- [Troubleshooting](#troubleshooting)
-
----
-
-## Architecture
-
-The system spans two OS environments connected over TCP via the WSL2 NAT bridge:
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    WINDOWS HOST                     │
-│                                                     │
-│  CARLA Simulator (CarlaUE4.exe)                     │
-│    Simulates Town01 map, vehicle physics & sensors  │
-│    Listens on TCP :2000, :2001, :8080               │
-│                                                     │
-│  spawn_vehicle.py  ──► Spawns ego vehicle + LiDAR   │
-│  follow_camera.py  ──► Spectator camera follow      │
-│  check_carla.py    ──► Sensor diagnostics           │
-└──────────────────────────┬──────────────────────────┘
-                           │ CARLA Python API (TCP :2000)
-                           │ WSL2 NAT bridge
-┌──────────────────────────▼──────────────────────────┐
-│              WSL2 / Docker (Ubuntu 22.04)           │
-│                                                     │
-│  bridge_node.py (ROS 2 Node)                        │
-│    Pulls sensor data from CARLA via Python API      │
-│    Converts CARLA left-hand ↔ ROS right-hand coords │
-│    Publishes sensor topics for Autoware             │
-│    Forwards Autoware control commands to CARLA      │
-│                                                     │
-│  ┌─────────────────────────────────────────────┐    │
-│  │            Autoware (ROS 2 Stack)           │    │
-│  │  NDT Scan Matcher  (LiDAR map localization) │    │
-│  │  EKF Localizer     (sensor fusion)          │    │
-│  │  Behavior Planner  (route decisions)        │    │
-│  │  Motion Planner    (trajectory generation)  │    │
-│  │  MPC/PID Controller (vehicle control)       │    │
-│  │  RViz2             (visualization)          │    │
-│  └─────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────┘
-```
-
----
-
-## Data Flow
-
-### CARLA → Bridge → Autoware (sensor pipeline)
-
-| CARLA Source | Bridge Conversion | ROS 2 Topic | Autoware Consumer |
-|---|---|---|---|
-| Vehicle position | Y-axis negated (coord flip) | `/sensing/gnss/pose` | EKF Localizer (initial fix) |
-| LiDAR point cloud | PointCloud2, Y negated | `/sensing/lidar/concatenated/pointcloud` | NDT Scan Matcher |
-| Angular velocity + gravity | IMU message | `/sensing/imu/imu_raw` | IMU Corrector → EKF |
-| Speed + steering angle | VelocityReport / SteeringReport | `/vehicle/status/*` | EKF Localizer |
-
-### Autoware → Bridge → CARLA (control pipeline)
-
-Autoware publishes an `AckermannControlCommand` to `/control/command/control_cmd`. The bridge converts target longitudinal velocity to CARLA throttle (10% scaling) and lateral steering angle (sign-inverted for axis convention), then calls `ego_vehicle.apply_control()`.
-
-### Startup Sequence
-
-1. Autoware launches and waits for sensor data.
-2. Bridge streams GNSS + IMU to give Autoware an initial position fix.
-3. Bridge polls `/api/localization/initialize` every 2 seconds; once Autoware's EKF is ready, it sends the vehicle's current pose.
-4. EKF activates → NDT begins aligning LiDAR to the Town01 point cloud map.
-5. Only after localization is confirmed does the bridge forward control commands to CARLA.
-
-> **Safety:** The vehicle is held at full brake until localization is confirmed. A 500 ms watchdog re-applies brakes if no control command is received.
-
----
-
-## Project Structure
-
-```
-carla-new/
-├── scripts/
-│   ├── check_setup.sh          # Pre-flight environment checker (run before bridge)
-│   └── get_host_ip.sh          # Discovers Windows host IP from WSL2
-│
-├── windows/                    # Run on Windows alongside CARLA
-│   ├── spawn_vehicle.py        # Spawns ego vehicle (Lincoln MKZ) + 64-ch LiDAR
-│   ├── follow_camera.py        # Moves CARLA spectator cam to follow ego vehicle
-│   ├── check_carla.py          # Attaches to all sensors and prints live data
-│   └── requirements.txt
-│
-└── wsl/                        # Run in WSL2 / Autoware Docker container
-    ├── bridge_node.py          # Core ROS 2 bridge node (CARLA ↔ Autoware)
-    ├── carla_bridge.launch.py  # Launches Autoware with CARLA-specific overrides
-    ├── fix_ndt_threshold.sh    # Lowers NDT score threshold for synthetic LiDAR
-    ├── send_dummy_command.py   # Integration test: sends fake drive commands
-    └── requirements.txt
-```
-
----
-
-## Setup
-
-### 1. Install CARLA 0.9.15 on Windows
-
-Download CARLA 0.9.15 from the [official releases page](https://github.com/carla-simulator/carla/releases/tag/0.9.15).
-
-### 2. Set Up Python Environment on Windows
-
-Create a Python 3.10 environment and install dependencies:
-
-```cmd
-pip install -r windows\requirements.txt
-```
-
-### 3. Install Ubuntu 22.04 in WSL2
-
-Download the [64-bit WSL image](https://releases.ubuntu.com/22.04/) and double-click to install. Then copy this project into your WSL home:
+## Set locale
+Make sure you have a locale which supports `UTF-8`. If you are in a minimal environment (such as a docker container), the locale may be something minimal like `POSIX`. We test with the following settings. However, it should be fine if you’re using a different UTF-8 supported locale.
 
 ```bash
-mkdir ~/projects
-cp -r /mnt/c/Users/<YourUsername>/Desktop/univaq-avv-carla-autoware ~/projects/
-cd ~/projects/univaq-avv-carla-autoware
-pip install -r wsl/requirements.txt
+locale  # check for UTF-8
 ```
-
-### 4. Install ROS 2 Humble in WSL2
-
-Follow the [official ROS 2 Humble installation guide](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html).
-
-### 5. Install Autoware in WSL2
-
-Follow the [Autoware installation guide](https://autowarefoundation.github.io/autoware-documentation/).
-
-After cloning Autoware, copy the bridge scripts:
 
 ```bash
-cp ~/projects/univaq-avv-carla-autoware/wsl/bridge_node.py ~/autoware/
-cp ~/projects/univaq-avv-carla-autoware/wsl/carla_bridge.launch.py ~/autoware/
+sudo apt update && sudo apt install locales
 ```
 
-#### Download CARLA Lanelet2 Maps
-
-Download `Town01.pcd` (point cloud) and `Town01.osm` (vector map) from [CARLA Autoware Contents](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/) — use the **y-axis inverted** variants.
-
-Rename and place them:
-
-```
-pointcloud_map.pcd    ← renamed from Town01.pcd
-lanelet2_map.osm      ← renamed from Town01.osm
-map_projector_info.yaml
+```bash
+sudo locale-gen en_US en_US.UTF-8
 ```
 
-Create `map_projector_info.yaml` with:
+```bash
+sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+```
+
+```bash
+export LANG=en_US.UTF-8
+```
+
+```bash
+locale  # verify settings
+```
+
+## Setup Sources
+You will need to add the ROS 2 apt repository to your system.
+
+First ensure that the [Ubuntu Universe repository](https://help.ubuntu.com/community/Repositories/Ubuntu) is enabled.
+
+```bash
+sudo apt install software-properties-common
+```
+
+```bash
+sudo add-apt-repository universe
+```
+
+The [ros-apt-source](https://github.com/ros-infrastructure/ros-apt-source/) packages provide keys and apt source configuration for the various ROS repositories.
+
+Installing the ros2-apt-source package will configure ROS 2 repositories for your system. Updates to repository configuration will occur automatically when new versions of this package are released to the ROS repositories.
+
+```bash
+sudo apt update && sudo apt install curl -y
+```
+
+```bash
+export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}')
+```
+
+```bash
+curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb"
+```
+
+```bash
+sudo dpkg -i /tmp/ros2-apt-source.deb
+```
+
+## Install ROS 2 packages
+Update your apt repository caches after setting up the repositories.
+
+```bash
+sudo apt update
+```
+
+ROS 2 packages are built on frequently updated Ubuntu systems. It is always recommended that you ensure your system is up to date before installing new packages.
+
+```bash
+sudo apt upgrade
+```
+
+Desktop Install (Recommended): ROS, RViz, demos, tutorials.
+
+```bash
+sudo apt install ros-humble-desktop
+```
+
+ROS-Base Install (Bare Bones): Communication libraries, message packages, command line tools. No GUI tools.
+
+```bash
+sudo apt install ros-humble-ros-base
+```
+
+Development tools: Compilers and other tools to build ROS packages
+
+```bash
+sudo apt install ros-dev-tools
+```
+
+## Try some examples
+If you installed `ros-humble-desktop` above you can try some examples.
+
+In one terminal, source the setup file and then run a C++ `talker`:
+
+```bash
+source /opt/ros/humble/setup.bash
+```
+
+```bash
+ros2 run demo_nodes_cpp talker
+```
+
+Open another Ubuntu 22.04 wsl terminal and run
+
+```bash
+source /opt/ros/humble/setup.bash
+```
+
+```bash
+ros2 run demo_nodes_py listener
+```
+
+You should see the `talker` saying that it’s `Publishing` messages and the `listener` saying `I heard` those messages. This verifies both the C++ and Python APIs are working properly.
+
+You can now close both terminals
+
+# Install autoware in ubuntu 22.04 wsl
+The following steps are taken from this [reference](https://autowarefoundation.github.io/autoware-documentation/main/installation/autoware/source-installation/) documentation.
+
+You must execute all the following command in your Ubuntu 22.04 wsl terminal.
+
+## How to set up a development environment
+Clone autowarefoundation/autoware and move to the directory.
+
+```bash
+git clone https://github.com/autowarefoundation/autoware.git
+```
+
+```bash
+cd autoware
+```
+
+If you are installing Autoware for the first time, you can automatically install the dependencies by using the provided Ansible script.
+
+```bash
+./setup-dev-env.sh
+```
+
+## How to set up a workspace
+### Create the `src` directory and clone repositories into it.
+Autoware uses `vcs2l` to construct workspaces.
+
+```bash
+cd autoware
+```
+
+```bash
+mkdir -p src
+```
+
+```bash
+vcs import src < repositories/autoware.repos
+```
+
+If you are an active developer, you may also want to pull the nightly repositories, which contain the latest updates:
+
+```bash
+vcs import src < repositories/autoware-nightly.repos
+```
+
+Optionally, you may also download the extra repositories that contain drivers for specific hardware, but they are not necessary for building and running Autoware:
+
+```bash
+vcs import src < repositories/extra-packages.repos
+```
+
+### Install dependent ROS packages.
+Autoware requires some ROS 2 packages in addition to the core components. The tool rosdep allows an automatic search and installation of such dependencies. You might need to run rosdep update before rosdep install.
+
+```bash
+source /opt/ros/humble/setup.bash
+```
+
+```bash
+# Make sure all previously installed ros-$ROS_DISTRO-* packages are upgraded to their latest version
+sudo apt update && sudo apt upgrade
+```
+
+```bash
+rosdep update
+```
+
+```bash
+rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO
+```
+
+### Install and set up ccache to speed up consecutive builds. (optional but highly recommended)
+Ccache is a compiler cache that can significantly speed up recompilation by caching previous compilations and reusing them when the same compilation is being done again. It's highly recommended for developers looking to optimize their build times, unless there's a specific reason to avoid it.
+
+Install Ccache
+
+```bash
+sudo apt update && sudo apt install ccache
+```
+
+Create the Ccache configuration folder and file:
+
+```bash
+mkdir -p ~/.cache/ccache
+```
+
+```bash
+touch ~/.cache/ccache/ccache.conf
+```
+
+Set the maximum cache size. The default size is 5GB, but you can increase it depending on your needs. Here, we're setting it to 60GB:
+
+```bash
+echo "max_size = 60G" >> ~/.cache/ccache/ccache.conf
+```
+
+To ensure Ccache is used for compilation, add the following lines to your .bashrc file. This will redirect GCC and G++ calls through Ccache.
+
+```bash
+export CC="/usr/lib/ccache/gcc"
+```
+
+```bash
+export CXX="/usr/lib/ccache/g++"
+```
+
+```bash
+export CCACHE_DIR="$HOME/.cache/ccache/"
+```
+
+After adding these lines, reload your .bashrc or restart your terminal session to apply the changes.
+
+To confirm Ccache is correctly set up and being used, you can check the statistics of cache usage:
+
+```bash
+ccache -s
+```
+
+This command displays the cache hit rate and other relevant statistics, helping you gauge the effectiveness of Ccache in your development workflow.
+
+# Install bridge in ubuntu 22.04 wsl
+The following steps are taken from this [reference](https://autowarefoundation.github.io/autoware_universe/main/simulator/autoware_carla_interface/) documentation.
+
+### Install CARLA Python Package
+Install CARLA 0.9.15 ROS 2 Humble communication package
+
+Download [carla-0.9.15-cp310-cp310-linux_x86_64.whl](https://github.com/gezp/carla_ros/releases/tag/carla-0.9.15-ubuntu-22.04) in you windows desktop.
+
+Open your Ubuntu 22.04 terminal and move the file in your home directory
+
+```bash
+cp -p /mnt/c/Users/Utente/Desktop/carla-0.9.15-cp310-cp310-linux_x86_64.whl ~
+```
+
+Install the wheel with pip
+```bash
+pip install carla-0.9.15-cp310-cp310-linux_x86_64.whl
+```
+
+Remove the wheel
+
+Install the wheel with pip
+```bash
+rm -rf carla-0.9.15-cp310-cp310-linux_x86_64.whl
+```
+
+### Download CARLA Lanelet2 Maps
+Download `point_cloud/Town01.pcd` and `vector_maps/lanelet2/Town01.osm` y-axis inverted maps from [CARLA Autoware Contents](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/) in your Windows os.
+
+Rename `point_cloud/Town01.pcd` → `pointcloud_map.pcd`
+
+Rename `vector_maps/lanelet2/Town01.osm` → `lanelet2_map.osm`
+
+Create a `map_projector_info.yaml` file with:
 
 ```yaml
 projector_type: Local
 ```
 
-Move all three files into Autoware:
+Open your wsl Ubuntu 22.04 terminal and create the map folder 
 
 ```bash
 mkdir -p ~/autoware/autoware_map/Town01/
-mv /mnt/c/Users/<YourUsername>/Desktop/pointcloud_map.pcd ~/autoware/autoware_map/Town01/
-mv /mnt/c/Users/<YourUsername>/Desktop/lanelet2_map.osm ~/autoware/autoware_map/Town01/
-mv /mnt/c/Users/<YourUsername>/Desktop/map_projector_info.yaml ~/autoware/autoware_map/Town01/
 ```
 
-### 6. Allow CARLA Ports Through Windows Firewall
-
-CARLA listens on TCP 2000, 2001, and 8080. Run once in PowerShell as Administrator:
-
-```powershell
-New-NetFirewallRule -DisplayName "CARLA" -Direction Inbound -Protocol TCP -LocalPort 2000,2001,8080 -Action Allow
-```
-
-### 7. Find the Windows Host IP
-
-In your WSL2 terminal:
+Move the files to this new location
 
 ```bash
-cd ~/projects/univaq-avv-carla-autoware
-source scripts/get_host_ip.sh
+cp -p /mnt/c/Users/Utente/Desktop/pointcloud_map.pcd ~/autoware/autoware_map/Town01/
 ```
 
-This exports `$CARLA_HOST` for use by the bridge node. Alternatively:
-
 ```bash
-ip route show | grep default | awk '{print $3}'
+cp -p /mnt/c/Users/Utente/Desktop/lanelet2_map.osm ~/autoware/autoware_map/Town01/
 ```
 
-### 8. Verify Everything Is Ready
+```bash
+cp -p /mnt/c/Users/Utente/Desktop/map_projector_info.yaml ~/autoware/autoware_map/Town01/
+```
+
+## Build
+To build autoware bridge run the following commands
 
 ```bash
-cd ~/projects/univaq-avv-carla-autoware
 source /opt/ros/humble/setup.bash
-bash scripts/check_setup.sh
 ```
-
-This checks that ROS 2, the CARLA Python API, and required message packages are installed, and that port 2000 is reachable on the Windows host.
-
----
-
-## Running the Bridge
-
-### Step 1 — Start CARLA (Windows)
-
-Double-click `CarlaUE4.exe` and wait for the simulator window to fully load.
-
-### Step 2 — Spawn the Ego Vehicle (Windows, Terminal 1)
-
-```cmd
-python windows\spawn_vehicle.py --map Town01
-```
-
-**Keep this terminal open** — closing it destroys the vehicle and all attached sensors.
-
-### Step 3 — (Optional) Follow Camera (Windows, Terminal 2)
-
-```cmd
-python windows\follow_camera.py
-```
-
-Keeps the CARLA spectator camera tracking the ego vehicle. **Keep this terminal open** while in use.
-
-### Step 4 — Start Autoware (WSL2, Terminal 3)
 
 ```bash
 cd ~/autoware
-bash docker/run.sh --devel
-cd /workspace
-source install/setup.bash
-ros2 launch ./carla_bridge.launch.py \
-  vehicle_name:=ego_vehicle \
-  map_path:=/workspace/autoware_map/Town01 \
-  vehicle_model:=sample_vehicle \
-  sensor_model:=carla_sensor_kit
 ```
 
-> **Note:** The launch file disables Autoware's real vehicle interface (`launch_vehicle_interface: false`) and perception stack (`launch_perception: false`), since the bridge replaces both.
+```bash
+sudo apt update
+```
 
-### Step 5 — Start the Bridge Node (WSL2, Terminal 4)
+```bash
+sudo apt install ros-humble-geographic-msgs
+```
 
-Open a new WSL2 terminal:
+```bash
+sudo apt install ros-humble-pcl-ros
+```
+
+```bash
+rosdep update
+```
+
+```bash
+find src -type d -name "pacmod_interface" -exec touch {}/COLCON_IGNORE \;
+```
+
+```bash
+rosdep install -y --from-paths src --ignore-src --rosdistro humble --skip-keys="pacmod3_msgs"
+```
+
+```bash
+colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+```
+
+## Network configuration
+
+### Enable multicast on lo
+
+You may just call the following command to enable multicast on the loopback interface.
+
+```bash
+sudo ip link set lo multicast on
+```
+
+**This will be reverted once the computer restarts. So it must be called every time.
+
+### ROS_LOCALHOST_ONLY
+
+It is crucial to ensure export ROS_LOCALHOST_ONLY=1 is removed when setting up your WSL2-to-Windows connection. If that variable is active, ROS 2 will refuse to send or receive data outside of its own virtual machine, meaning it will never see the CARLA server on Windows.
+
+Open your WSL2 terminal and run this command to search your `.bashrc` file:
+
+```bash
+grep ROS_LOCALHOST_ONLY ~/.bashrc
+```
+
+If it prints nothing you are good to go! The line is not in your file. Skip to Step 3 just to be safe.
+
+If it prints `export ROS_LOCALHOST_ONLY=1` you need to remove or comment it out. The easiest way to edit the file in the terminal is using the nano text editor.
+
+Open the file:
+
+```bash
+nano ~/.bashrc
+```
+
+Scroll down using your arrow keys (or use `Ctrl + W` to search for "ROS_LOCALHOST_ONLY") until you find the line.
+
+Comment it out by adding a `#` at the very beginning of the line, like this:
+
+```bash
+# export ROS_LOCALHOST_ONLY=1
+```
+
+(Alternatively, you can just delete the whole line).
+
+Save and exit by pressing `Ctrl + O` (letter O, not zero), hit `Enter` to confirm the file name, and then press `Ctrl + X` to exit nano
+
+Even after removing it from the file, the variable might still be lingering in your current terminal memory. To fix this apply the updated `.bashrc`:
+
+```bash
+source ~/.bashrc
+```
+
+Unset the variable for your current active terminal session:
+
+```bash
+unset ROS_LOCALHOST_ONLY
+```
+
+To absolutely guarantee that ROS 2 is no longer restricted to localhost, run:
+
+```bash
+echo $ROS_LOCALHOST_ONLY
+```
+
+### Tune DDS settings
+
+Autoware uses DDS for internode communication. ROS 2 documentation recommends users to tune DDS to utilize its capability. CycloneDDS is the recommended and most tested DDS implementation for Autoware.
+
+Set the config file path and enlarge the Linux kernel maximum buffer size before launching Autoware.
+
+```bash
+# Increase the maximum receive buffer size for network packets
+sudo sysctl -w net.core.rmem_max=2147483647  # 2 GiB, default is 208 KiB
+
+# IP fragmentation settings
+sudo sysctl -w net.ipv4.ipfrag_time=3  # in seconds, default is 30 s
+sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728  # 128 MiB, default is 256 KiB
+```
+
+**This must be done everytime before launching autoware**
+
+Validate the sysctl settings
+
+```bash
+sysctl net.core.rmem_max net.ipv4.ipfrag_time net.ipv4.ipfrag_high_thresh
+```
+
+### CycloneDDS Configuration
+
+Save the following file as `cyclonedds.xml`
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<CycloneDDS xmlns="https://cdds.io/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface autodetermine="false" name="lo" priority="default" multicast="default" />
+      </Interfaces>
+      <AllowMulticast>default</AllowMulticast>
+      <MaxMessageSize>65500B</MaxMessageSize>
+    </General>
+    <Discovery>
+      <ParticipantIndex>none</ParticipantIndex>
+    </Discovery>
+    <Internal>
+      <SocketReceiveBufferSize min="10MB"/>
+      <Watermarks>
+        <WhcHigh>500kB</WhcHigh>
+      </Watermarks>
+    </Internal>
+  </Domain>
+</CycloneDDS>
+```
+
+Move it inside wsl
+
+```bash
+cp -r /mnt/c/Users/Utente/Desktop/cyclonedds.xml ~
+```
+
+On ROS 2 Jazzy, the default maximum Participant Index in rmw_cyclonedds_cpp is limited to around 32, which can cause a "Failed to find a free participant index for domain 0" error when running many nodes (e.g. planning simulator). Adding the `<Discovery>` section above with `ParticipantIndex` set to `none` avoids this error.
+
+Then open your `~/.bashrc` file
+
+```bash
+nano ~/.bashrc
+```
+
+and add the following lines
+
+```bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+export CYCLONEDDS_URI=file:///absolute/path/to/cyclonedds.xml
+# Replace `/absolute/path/to/cyclonedds.xml` with the actual path to the file.
+# Example: export CYCLONEDDS_URI=file:///home/user/cyclonedds.xml
+```
+
+## Console settings for ROS 2
+
+### Colorizing logger output
+
+By default, ROS 2 logger doesn't colorize the output. To colorize it, add the following to your `~/.bashrc`:
+
+```bash
+export RCUTILS_COLORIZED_OUTPUT=1
+```
+
+### Customizing the format of logger output
+
+By default, ROS 2 logger doesn't output detailed information such as file name, function name, or line number. To customize it, add the following to your `~/.bashrc`:
+
+```bash
+export RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity} {time}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
+```
+
+For more options, see [here](https://docs.ros.org/en/rolling/Tutorials/Demos/Logging-and-logger-configuration.html#console-output-formatting).
+
+
+### Colorized GoogleTest output
+Add 
+
+```bash
+export GTEST_COLOR=1
+```
+
+to your `~/.bashrc`.
+
+For more details, refer to [Advanced GoogleTest Topics: Colored Terminal Output](https://google.github.io/googletest/advanced.html#colored-terminal-output).
+
+This is useful when running tests with colcon test.
+
+## Configure the autoware_carla_interface
+
+By default, the interface expects the CARLA server to be running on `localhost:2000`. You need to point it to your Windows host IP.
+
+In your Autoware workspace inside WSL2, locate the configuration or launch file for the `autoware_carla_interface`
+
+Open your WSL2 terminal and navigate to your Autoware workspace directory. (Usually, this is a folder named autoware in your home directory, but adjust the command if you named it differently).
 
 ```bash
 cd ~/autoware
-bash docker/run.sh --devel
-cd /workspace
-source install/setup.bash
-pip install carla==0.9.15      # required each time inside Docker
-python3 bridge_node.py --ros-args -p carla_host:="host.docker.internal"
 ```
 
----
+Since Autoware Universe has many folders, the easiest way to find the exact path to the CARLA interface launch file is to use the `find` command:
 
-## Diagnostics
+```bash
+find src -name "autoware_carla_interface.launch.xml" 
+# (If it doesn't find an .xml file, try: find src -name "autoware_carla_interface.launch.py")
+```
 
-### Check Carla sensors (Inside Windows Terminal)
+This will print out a path that looks something like this:
+
+```bash
+src/universe/autoware_universe/simulator/autoware_carla_interface/launch/autoware_carla_interface.launch.xml
+```
+
+Copy the path that the `find` command gave you, and open it using `nano` (or type `code .` to open your whole workspace in VS Code, which is highly recommended for WSL2!).
+
+If using `nano`, the command will look like this:
+
+```bash
+nano src/universe/autoware_universe/simulator/autoware_carla_interface/launch/autoware_carla_interface.launch.xml
+```
+
+Once the file is open, look for the parameter or argument that defines the host or hostname. It usually looks something like this:
+
+```xml
+<arg name="host" default="localhost"/>
+```
+
+(If it's a Python file or YAML file, it might look like `host: 'localhost'` or `default_value='localhost'`)
+
+Use your arrow keys to navigate to `localhost` and delete it.
+
+Replace it with your Windows vEthernet (WSL) IPv4 address (e.g., 172.x.x.x) found by running the `ipconfig` command
+
+```xml
+<arg name="host" default="172.25.80.1"/>
+```
+
+Save and exit nano using the steps you just learned: `Ctrl + O`, `Enter`, `Ctrl + X`.
+
+Because you changed a file inside the `src` folder, you need to quickly rebuild that specific package so ROS 2 recognizes the changes. Run:
+
+```bash
+colcon build --packages-select autoware_carla_interface
+```
+
+Source your workspace to apply the changes:
+
+```bash
+source install/setup.bash
+```
+
+## Run
+
+1. In windows go to you carla directory
 
 ```cmd
-python .\windows\check_carla.py
+cd C:\Users\Utente\Documents\CARLA_0.9.15\WindowsNoEditor
 ```
 
-### Check Active ROS 2 Topics (Inside Docker Terminal)
+2. Run carla, change map, spawn object if you need
+
+```cmd
+./CarlaUE4.exe -prefernvidia -quality-level=Low -RenderOffScreen
+```
+
+**If you omit `-RenderOffScreen` you can see carla window popping up**
+
+3. Open a wsl terminal, set up the environment
 
 ```bash
-ros2 topic list
+cd ~/autoware
+sudo ip link set lo multicast on
+sudo sysctl -w net.core.rmem_max=2147483647
+sudo sysctl -w net.ipv4.ipfrag_time=3
+sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
+source install/setup.bash
 ```
 
-Key topics for confirming the bridge is working:
-
-| Topic | Description |
-|---|---|
-| `/sensing/gnss/pose` | Vehicle absolute position |
-| `/sensing/imu/imu_raw` | Acceleration and tilt |
-| `/sensing/lidar/concatenated/pointcloud` | 3D LiDAR point cloud |
-| `/vehicle/status/velocity_status` | Current speed |
-| `/vehicle/status/steering_status` | Current steering angle |
-
-Echo any topic to inspect live data:
+4. Run Autoware with CARLA
 
 ```bash
-ros2 topic echo /vehicle/status/velocity_status
+ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=carla_sensor_kit simulator_type:=carla
 ```
 
-### Check Autoware Localization (Inside Docker Terminal)
+5. Set initial pose (Init by GNSS)
 
-Autoware fuses IMU, wheel speed, and LiDAR into a single kinematic state:
+6. Set goal position
 
-```bash
-ros2 topic echo /localization/kinematic_state
-```
+7. Wait for planning
 
-### Check NDT Alignment Score (Inside Docker Terminal)
-
-NDT "locks" the vehicle to the map using LiDAR. A low score means poor alignment — the vehicle may jump or drift:
-
-```bash
-ros2 topic echo /localization/pose_estimator/ndt_scan_matcher/status
-```
-
-
----
-
-## Troubleshooting
-
-### Vehicle doesn't move / stays braked
-
-The bridge holds full brake until Autoware's EKF localizer is initialized. Check that:
-- NDT is receiving LiDAR data (`/sensing/lidar/concatenated/pointcloud` has data)
-- The localization initialize service call succeeded (visible in bridge logs)
-
-### Bridge cannot connect to CARLA
-
-- Confirm the Windows Firewall rule for ports 2000, 2001, 8080 is active.
-- Confirm `spawn_vehicle.py` is still running on Windows.
-- Re-run `source scripts/get_host_ip.sh` and use the printed IP explicitly:
-  ```bash
-  python3 bridge_node.py --ros-args -p carla_host:="<windows-host-ip>"
-  ```
-
-### Sensor data looks wrong (jumps, wrong orientation)
-
-All bridge outputs negate the Y-axis and invert yaw sign to convert CARLA's left-handed coordinate system to ROS's right-handed frame. If sensor data appears mirrored, confirm you are using the **y-axis inverted** map files from the CARLA Autoware Contents repository.
+8. Engage
