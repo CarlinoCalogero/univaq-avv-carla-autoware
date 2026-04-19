@@ -464,36 +464,10 @@ sysctl net.core.rmem_max net.ipv4.ipfrag_time net.ipv4.ipfrag_high_thresh
 
 ### CycloneDDS Configuration
 
-Save the following file as `cyclonedds.xml`
-
-```xml
-<?xml version="1.0" encoding="UTF-8" ?>
-<CycloneDDS xmlns="https://cdds.io/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
-  <Domain Id="any">
-    <General>
-      <Interfaces>
-        <NetworkInterface autodetermine="false" name="lo" priority="default" multicast="default" />
-      </Interfaces>
-      <AllowMulticast>default</AllowMulticast>
-      <MaxMessageSize>65500B</MaxMessageSize>
-    </General>
-    <Discovery>
-      <ParticipantIndex>none</ParticipantIndex>
-    </Discovery>
-    <Internal>
-      <SocketReceiveBufferSize min="10MB"/>
-      <Watermarks>
-        <WhcHigh>500kB</WhcHigh>
-      </Watermarks>
-    </Internal>
-  </Domain>
-</CycloneDDS>
-```
-
-Move it inside wsl
+Copy `cyclonedds.xml` inside WSL
 
 ```bash
-cp -r /mnt/c/Users/<YourUsername>/Desktop/cyclonedds.xml ~
+cp -r /mnt/c/Users/<YourUsername>/path/to/repo/config/cyclonedds.xml ~
 ```
 
 On ROS 2 Jazzy, the default maximum Participant Index in rmw_cyclonedds_cpp is limited to around 32, which can cause a "Failed to find a free participant index for domain 0" error when running many nodes (e.g. planning simulator). Adding the `<Discovery>` section above with `ParticipantIndex` set to `none` avoids this error.
@@ -626,7 +600,7 @@ pip install -r .\requirements.txt
 Open a new WSL terminal and copy the `autoware_tools.py` inside your autoware folder
 
 ```bash
-cp -r /mnt/c/Users/<YourUsername>/Desktop/univaq-avv-carla-autoware/autoware_tools.py ~/autoware
+cp -r /mnt/c/Users/<YourUsername>/path/to/repo/scripts/wsl/autoware_tools.py ~/autoware
 ```
 
 ## Run
@@ -645,7 +619,13 @@ cd C:\Users\<YourUsername>\Documents\CARLA_0.9.15\WindowsNoEditor
 
 **If you omit `-RenderOffScreen` you can see the CARLA window popping up**
 
-If you want the CARLA spectator camera to automatically track the Autoware vehicle as it drives, open a **new Windows Command Prompt**, navigate to your script folder, source the python environment and run `follow_camera.py` tool
+If you want the CARLA spectator camera to automatically track the Autoware vehicle as it drives, open a **new Windows Command Prompt**, navigate to your script folder
+
+```cmd
+cd .\scripts\windows\
+```
+
+source the python environment and run `follow_camera.py` tool
 
 ```cmd
 python .\follow_camera.py
@@ -753,7 +733,7 @@ If you want to watch the physics, traffic, and vehicle movement exactly as it ha
 2. In a Windows Command Prompt, run:
 
 ```cmd
-python carla_tools.py replay --recording your_snapshot.log
+python scripts/windows/carla_tools.py replay --recording your_snapshot.log
 ```
 
 3. CARLA will automatically reset the world, teleport the car to the starting line, and replay the physics. Autoware does not need to be running for this.
