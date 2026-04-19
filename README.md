@@ -619,90 +619,182 @@ ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware/au
 
 8. Engage
 
-## CARLA Unified Tools (`carla_tools.py`)
+## Data Collection & Synchronization (`sync_record.bat`)
 
-A unified Command Line Interface (CLI) tool for recording, replaying, and analyzing CARLA simulations. This tool simplifies the CARLA Python API into a single script, automatically managing file paths and organizing your logs into a clean `recordings/carla/` directory.
+We use two parallel tools for data collection: `carla_tools.py` (which records the 3D world physics) and `autoware_tools.py` (which records the AI's internal thoughts via ROS 2 bags). 
 
-### Basic Usage
+To ensure the timelines match up perfectly, use the synchronized batch file.
 
-The basic syntax is:
+**How to record a scenario:**
+1. Ensure both your CARLA server and Autoware are running and connected (Steps 1-8 above).
+
+2. Open a normal Windows Command Prompt, navigate to your script folder, and run the batch file:
 
 ```cmd
-python carla_tools.py [global_args] <command> [command_args]
+sync_record.bat
 ```
 
-### Global Arguments
+3. A new "Autoware Recorder" WSL window will automatically pop up to record the ROS 2 bag, while your main window records the CARLA simulator.
 
-These arguments can be applied to any command. If your CARLA server is running locally on default ports, you can omit them.
+4. When your scenario is finished, click on each terminal window and press `Ctrl+C`. The scripts will safely save the files and the windows will automatically close.
+
+All data is saved automatically in a generated `recordings/` folder next to your scripts.
+
+## Replaying Scenarios (Simulator vs. Brain)
+
+Because these systems are separate, you cannot replay both at the same time. Replaying a scenario requires choosing whether you want to watch the physical car in the simulator, or the AI's logic in RViz.
+
+### The "Ghost Conflict" (Why they must be separate)
+
+If you play a ROS 2 bag while Autoware is actively connected to a live CARLA simulation, you create a massive data collision.
+
+* The live CARLA simulator tells Autoware: **"I am at coordinates X, Y, and my speed is 0."**
+
+* Your ROS 2 bag tells Autoware at the exact same time: **"No, I am at coordinates A, B, and my speed is 30!"**
+
+Autoware's localization module will panic due to the conflicting realities, trigger the emergency safety systems, and lock the brakes.
+
+### Scenario A: Watch the 3D Simulator (CARLA)
+
+If you want to watch the physics, traffic, and vehicle movement exactly as it happened in the 3D world:
+
+1. Keep the CARLA server running.
+
+2. In a Windows Command Prompt, run:
+
+```cmd
+python carla_tools.py replay --recording your_snapshot.log
+```
+
+3. CARLA will automatically reset the world, teleport the car to the starting line, and replay the physics. Autoware does not need to be running for this.
+
+### Scenario B: Watch the AI's Logic (Autoware)
+
+If you want to see the trajectory planning, bounding boxes, and sensor data the AI was processing in RViz:
+
+1. Go to your main Autoware terminal and press `Ctrl+C` to cleanly shut down the live simulation (this will close RViz).
+
+2. Start Autoware back up, but swap `e2e_simulator.launch.xml` for `logging_simulator.launch.xml`:
+
+```bash
+ros2 launch autoware_launch logging_simulator.launch.xml map_path:=$HOME/autoware/autoware_map/Town01 vehicle_model:=sample_vehicle sensor_model:=carla_sensor_kit
+```
+
+3. RViz will immediately pop back open with your map loaded.
+
+3. In a new WSL2 terminal, run:
+
+```bash
+python3 autoware_tools.py replay --bag your_bag_folder
+```
+
+**Crucial Note: The `autoware_tools.py` replay script automatically injects the `--clock` flag to force Autoware to accept historical timestamps.**
+
+## CLI Tools Reference
+
+Below is the complete reference for the standalone Python tools, including all available commands and their optional parameters.
+
+### CARLA Unified Tools (`carla_tools.py`)
+Run this script natively on **Windows** to interact with the CARLA server. 
+
+**Global Arguments** These can be placed before any command if your CARLA server is not running locally on the default port.
 
 * `--host`: The IP address of the CARLA Server (Default: `localhost`).
 
 * `--port`: The port of the CARLA Server (Default: `2000`).
 
+#### `record`
+
+Starts a new simulation recording. Files are saved as `.log` in the `recordings/` folder.
+
+```cmd
+python carla_tools.py record [options]
+```
+
+* `--additional_data`: (Optional flag) If included, records additional data including: linear and angular velocity of vehicles and pedestrians, traffic light time settings, execution time, actors' trigger and bounding boxes, and physics controls for vehicles.
+
+#### replay
+
+Replays a saved `.log` file inside the simulator.
+
+```cmd
+python carla_tools.py replay --recording <file.log> [options]
+```
+
+* `--recording`: **(Required)** The exact name of the `.log` file to replay.
+
+* `--start`: (Optional) Recording time in seconds to start the simulation at. If positive, time is considered from the beginning of the recording. If negative, it is considered from the end. (Default: `0.0`).
+
+* `--duration`: (Optional) Seconds to playback. `0` plays the entire recording. By the end of the playback, vehicles will be set to autopilot and pedestrians will stop. (Default: `0.0`).
+
+* `--camera`: (Optional) ID of the actor that the camera will focus on. Set it to `0` to let the spectator move freely. (Default: `0`).
+
+* `--time_factor`: (Optional) Playback speed multiplier. For example, `2.0` is double speed. (Default: `1.0`).
+
+#### info
+
+Extracts data from a binary .log file into a readable .txt file.
+
+```cmd
+python carla_tools.py info --recording <file.log> [options]
+```
+
+* `--recording`: **(Required)** The exact name of the .log file to parse.
+
+* `--show_all`: (Optional flag) By default, the tool only retrieves frames where an event was registered (summary mode). Setting this flag returns all the information for every single frame (detailed mode).
+
+### Autoware Unified Tools (`autoware_tools.py`)
+
+Run this script inside your Ubuntu / WSL2 terminal to interact with ROS 2. 
+
+**Note: Before using this tool you must run**
+
+```bash
+source /opt/ros/humble/setup.bash
+```
+
+#### record
+
+Starts a new ROS 2 bag recording in the background. By default, it records the core ADAS topics: 
+1. `/planning/scenario_planning/trajectory`
+2. `/control/command/control_cmd`
+3. `/perception/object_recognition/objects`
+4. `/localization/kinematic_state`
+5. `/tf`
+6. `/tf_static`
+
+```bash
+python3 autoware_tools.py record [options]
+```
+
+* `--all`: (Optional flag) Records ALL active ROS 2 topics. Warning: This will result in massive file sizes and may impact system performance.
+
+* `--topics`: (Optional) A space-separated list of specific topics to record instead of the defaults.
+
 Example:
 
-```cmd
-python carla_tools.py --host 172.x.x.x --port 2000 record
+```bash
+python3 autoware_tools.py record --topics /sensing/lidar/top/pointcloud_raw /vehicle/status/velocity_status
 ```
 
-### Commands
+#### replay
 
-1. `record`
+Replays an existing ROS 2 bag back into the ROS network. (The tool automatically injects the `--clock` flag so Autoware accepts the historical data).
 
-Starts a new recording of the current CARLA simulation. The script will display a live timer. Press `Ctrl+C` to stop recording and save the file. Files are automatically timestamped (e.g., `my_snapshot_2026-04-19_20-52-45.log`).
-
-Arguments:
-
-* `--additional_data`: (Optional) Flag to include extended physics, bounding boxes, and traffic light data.
-
-Example:
-
-```cmd
-python carla_tools.py record --additional_data
+```bash
+python3 autoware_tools.py replay --bag <bag_folder_name> [options]
 ```
 
-2. `replay`
+* `--bag`: **(Required)** The exact name of the bag folder you want to replay.
 
-Replays a previously saved `.log` file inside the CARLA simulator. The script will display a live timer. Press `Ctrl+C` to stop playback.
+* `--rate`: (Optional) Playback speed multiplier. For example, `2.0` plays the bag at 2x speed. (Default: `1.0`).
 
-Arguments:
+#### info
 
-* `--recording`: **(Required)** The name of the `.log` file to replay.
+Extracts the ROS 2 bag metadata (total duration, message counts, topic list) and saves it as a `.txt` file.
 
-* `--start`: (Optional) Time in seconds to start the playback (Default: `0.0`).
-
-* `--duration`: (Optional) Seconds to playback. `0` plays the entire recording (Default: `0.0`).
-
-* `--time_factor`: (Optional) Playback speed multiplier. `2.0` is 2x speed (Default: `1.0`).
-
-* `--camera`: (Optional) ID of the actor to focus the camera on. `0` allows free movement (Default: `0`).
-
-Example:
-
-```cmd
-python carla_tools.py replay --recording my_snapshot_2026-04-19_20-52-45.log --time_factor 1.5
+```bash
+python3 autoware_tools.py info --bag <bag_folder_name>
 ```
 
-3. `info`
-
-Extracts the data from a binary `.log` file and saves it as a human-readable text file (`.txt`) for analysis. The text file is saved in the same directory as the log.
-
-Arguments:
-
-* `--recording`: **(Required)** The name of the `.log` file to parse.
-
-* `--show_all`: (Optional) Flag to dump massive, detailed frame-by-frame data. If omitted, generates a quick summary instead.
-
-### Example (Summary):
-
-```cmd
-python carla_tools.py info --recording my_snapshot_2026-04-19_20-52-45.log
-# Saves as: my_snapshot_2026-04-19_20-52-45_summary.txt
-```
-
-### Example (Detailed Dump):
-
-```cmd
-python carla_tools.py info --recording my_snapshot_2026-04-19_20-52-45.log --show_all
-# Saves as: my_snapshot_2026-04-19_20-52-45_detailed.txt
-```
+* `--bag`: **(Required)** The exact name of the bag folder to parse.

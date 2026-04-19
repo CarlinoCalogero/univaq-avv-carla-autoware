@@ -68,30 +68,37 @@ def command_record(args):
         print(f"Recording saved: {final_save_path}")
 
 def command_replay(args):
-    final_bag_path = get_valid_bag_path(args.bag)
-    print(f"Replaying Autoware bag: {final_bag_path}")
+    final_log_path = get_valid_log_path(args.recording)
+    print(f"Replaying CARLA recording: {final_log_path}")
 
-    # ADDED: "--clock" is strictly required for Autoware to accept historical data!
-    cmd = ["ros2", "bag", "play", final_bag_path, "-r", str(args.rate), "--clock"]
+    client = connect_to_carla(args.host, args.port)
+    client.set_replayer_time_factor(args.time_factor)
     
-    # CHANGED: We removed stderr=subprocess.DEVNULL. 
-    # Now, if ROS 2 fails to play the bag, it will actually print the error to your screen!
-    process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL)
+    # Start replay
+    result = client.replay_file(final_log_path, args.start, args.duration, args.camera)
+    print(result)
     print("Playback started. Press Ctrl+C to stop the replay.")
 
+    # Record the exact moment we started
     start_time = time.time()
+
     try:
-        while process.poll() is None:
+        while True:
+            # 1. Calculate how much real-world time has passed
             real_elapsed = time.time() - start_time
-            sim_elapsed = int(real_elapsed * args.rate)
+            
+            # 2. Multiply by the playback speed to get simulation time
+            sim_elapsed = int(real_elapsed * args.time_factor)
+            
+            # 3. Format and print
             mins, secs = divmod(sim_elapsed, 60)
-            print(f"\rReplay time: {mins:02d}:{secs:02d} (Speed: {args.rate}x)", end='', flush=True)
+            
+            print(f"\rReplay time: {mins:02d}:{secs:02d} (Speed: {args.time_factor}x)", end='', flush=True)
             time.sleep(1)
-        print("\nPlayback finished naturally.")
+            
     except KeyboardInterrupt:
         print("\nStopping playback...")
-        process.terminate()
-        process.wait()
+        client.stop_replayer(keep_actors=False)
         print("Playback stopped successfully.")
 
 def command_info(args):
