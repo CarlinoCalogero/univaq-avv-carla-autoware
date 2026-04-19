@@ -578,6 +578,24 @@ Source your workspace to apply the changes:
 source install/setup.bash
 ```
 
+## Set up Windows workspace
+
+Open a terminal in your windows folder and create a Python environment using Python 3.10, then install the requirements
+
+```cmd
+pip install -r .\requirements.txt
+```
+
+*Note: Always source this environment when running python scripts from Windows.*
+
+## Set up Wsl workspace
+
+Open a new wsl terminal and copy the `autoware_tools.py` inside your autoware folder
+
+```bash
+cp -r /mnt/c/Users/Utente/Desktop/univaq-avv-carla-autoware/autoware_tools.py ~/autoware
+```
+
 ## Run
 
 1. In windows go to you carla directory
@@ -593,6 +611,45 @@ cd C:\Users\Utente\Documents\CARLA_0.9.15\WindowsNoEditor
 ```
 
 **If you omit `-RenderOffScreen` you can see carla window popping up**
+
+If you want the CARLA spectator camera to automatically track the Autoware vehicle as it drives, open a **new Windows Command Prompt**, navigate to your script folder, source the python environment and run `follow_camera.py` tool
+
+```cmd
+python .\follow_camera.py
+```
+
+The script will patiently wait until it detects the `ego_vehicle` in the simulation and then attach the camera to it.
+
+**Basic Usage (Chase Cam):**
+
+```cmd
+python follow_camera.py
+```
+
+**Alternative Camera Modes:**
+
+```cmd
+python follow_camera.py --mode top          # Bird's-eye view (great for intersections)
+python follow_camera.py --mode front        # Front-facing camera looking backward
+```
+
+**Customizing the Camera:**
+
+You can tweak the exact position and update speed using the following arguments:
+
+* `--mode`: `behind` (default), `top`, or `front`.
+
+* `--offset-back`: Distance behind the vehicle in meters (Default: `8.0`).
+
+* `--offset-z`: Height above the vehicle in meters (Default: `4.0`).
+
+* `--rate`: Camera update rate in Hz (Default: `30.0`).
+
+*Example of a close-up, low-angle tracking shot:*
+
+```cmd
+python follow_camera.py --offset-back 5.0 --offset-z 2.0
+```
 
 3. Open a wsl terminal, set up the environment
 
@@ -695,6 +752,9 @@ python3 autoware_tools.py replay --bag your_bag_folder
 Below is the complete reference for the standalone Python tools, including all available commands and their optional parameters.
 
 ### CARLA Unified Tools (`carla_tools.py`)
+
+This tool was developed using the [official documentation](https://carla.readthedocs.io/en/0.9.15/adv_recorder/) as reference.
+
 Run this script natively on **Windows** to interact with the CARLA server. 
 
 **Global Arguments** These can be placed before any command if your CARLA server is not running locally on the default port.
