@@ -74,8 +74,34 @@ def command_replay(args):
     client = connect_to_carla(args.host, args.port)
     client.set_replayer_time_factor(args.time_factor)
     
+    # Start replay
     result = client.replay_file(final_log_path, args.start, args.duration, args.camera)
     print(result)
+    print("Playback started. Press Ctrl+C to stop the replay.")
+
+    # Record the exact moment we started
+    start_time = time.time()
+
+    try:
+        while True:
+            # 1. Calculate how much real-world time has passed
+            real_elapsed = time.time() - start_time
+            
+            # 2. Multiply by the playback speed to get simulation time
+            sim_elapsed = int(real_elapsed * args.time_factor)
+            
+            # 3. Format and print
+            mins, secs = divmod(sim_elapsed, 60)
+            
+            # We include the speed multiplier in the printout so the user knows!
+            print(f"\rReplay time: {mins:02d}:{secs:02d} (Speed: {args.time_factor}x)", end='', flush=True)
+            
+            time.sleep(1)
+            
+    except KeyboardInterrupt:
+        print("\nStopping playback...")
+        client.stop_replayer(keep_actors=False)
+        print("Playback stopped successfully.")
 
 def command_info(args):
     final_log_path = get_valid_log_path(args.recording)

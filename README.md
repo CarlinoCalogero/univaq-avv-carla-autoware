@@ -663,7 +663,7 @@ python carla_tools.py record --additional_data
 
 2. `replay`
 
-Replays a previously saved `.log` file inside the CARLA simulator.
+Replays a previously saved `.log` file inside the CARLA simulator. The script will display a live timer. Press `Ctrl+C` to stop playback.
 
 Arguments:
 
