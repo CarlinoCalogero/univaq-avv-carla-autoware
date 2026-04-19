@@ -1,15 +1,39 @@
-# Install ubuntu 22.04 for wsl
-Go to this [link](https://releases.ubuntu.com/22.04/) and download the WSL image `64-bit PC (AMD64) WSL image`. Then double click on it after download and follow installation instructions
+# CARLA & Autoware Co-Simulation Framework
 
-# Download carla for windows
-Download [CARLA_0.9.15.zip](https://github.com/carla-simulator/carla/releases/tag/0.9.15/), unzip it in a handy location on your Windows pc
+A complete, cross-platform development environment bridging the CARLA simulator (Windows) with the Autoware AI brain (Ubuntu WSL2). This repository includes setup instructions, network bridging configurations, and custom CLI tools for synchronized data collection and replay.
 
-# Install ros2 in ubuntu 22.04 wsl
+## Table of Contents
+1. [Install Ubuntu 22.04 for WSL](#install-ubuntu-22-04-for-wsl)
+2. [Download CARLA 0.9.15 for Windows](#download-carla-0-9-15-for-windows)
+3. [Install ROS 2 in Ubuntu 22.04 WSL](#install-ros-2-in-ubuntu-2204-wsl)
+4. [Install Autoware in Ubuntu 22.04 WSL](#install-autoware-in-ubuntu-2204-wsl)
+5. [Install Bridge in Ubuntu 22.04 WSL](#install-bridge-in-ubuntu-2204-wsl)
+6. [Network Configuration](#network-configuration)
+7. [Configure the autoware_carla_interface](#configure-the-autoware_carla_interface)
+8. [Set up Windows Workspace](#set-up-windows-workspace)
+9. [Set up Ubuntu 22.04 WSL Workspace](#set-up-ubuntu-2204-wsl-workspace)
+10. [Run](#run)
+11. [Data Collection & Synchronization](#data-collection--synchronization-sync_recordbat)
+12. [Replaying Scenarios (Simulator vs. Brain)](#replaying-scenarios-simulator-vs-brain)
+13. [CLI Tools Reference](#cli-tools-reference)
+
+---
+
+## Install Ubuntu 22.04 for WSL
+Go to this [link](https://releases.ubuntu.com/22.04/) and download the WSL image `64-bit PC (AMD64) WSL image`. Then double click on it after download and follow installation instructions.
+
+## Download CARLA 0.9.15 for Windows
+
+Download [CARLA_0.9.15.zip](https://github.com/carla-simulator/carla/releases/tag/0.9.15/), unzip it in a handy location on your Windows PC.
+
+## Install ROS 2 in Ubuntu 22.04 WSL
+
 The following steps are taken from this [reference](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html) documentation.
 
-You must execute all the following command in your Ubuntu 22.04 wsl terminal.
+You must execute all the following commands in your Ubuntu 22.04 WSL terminal.
 
-## Set locale
+### Set locale
+
 Make sure you have a locale which supports `UTF-8`. If you are in a minimal environment (such as a docker container), the locale may be something minimal like `POSIX`. We test with the following settings. However, it should be fine if you’re using a different UTF-8 supported locale.
 
 ```bash
@@ -36,7 +60,8 @@ export LANG=en_US.UTF-8
 locale  # verify settings
 ```
 
-## Setup Sources
+### Setup Sources
+
 You will need to add the ROS 2 apt repository to your system.
 
 First ensure that the [Ubuntu Universe repository](https://help.ubuntu.com/community/Repositories/Ubuntu) is enabled.
@@ -69,7 +94,8 @@ curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-a
 sudo dpkg -i /tmp/ros2-apt-source.deb
 ```
 
-## Install ROS 2 packages
+### Install ROS 2 packages
+
 Update your apt repository caches after setting up the repositories.
 
 ```bash
@@ -100,7 +126,8 @@ Development tools: Compilers and other tools to build ROS packages
 sudo apt install ros-dev-tools
 ```
 
-## Try some examples
+### Try some examples
+
 If you installed `ros-humble-desktop` above you can try some examples.
 
 In one terminal, source the setup file and then run a C++ `talker`:
@@ -113,7 +140,7 @@ source /opt/ros/humble/setup.bash
 ros2 run demo_nodes_cpp talker
 ```
 
-Open another Ubuntu 22.04 wsl terminal and run
+Open another Ubuntu 22.04 WSL terminal and run
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -127,12 +154,14 @@ You should see the `talker` saying that it’s `Publishing` messages and the `li
 
 You can now close both terminals
 
-# Install autoware in ubuntu 22.04 wsl
+## Install Autoware in Ubuntu 22.04 WSL
+
 The following steps are taken from this [reference](https://autowarefoundation.github.io/autoware-documentation/main/installation/autoware/source-installation/) documentation.
 
-You must execute all the following command in your Ubuntu 22.04 wsl terminal.
+You must execute all the following commands in your Ubuntu 22.04 WSL terminal.
 
-## How to set up a development environment
+### How to set up a development environment
+
 Clone autowarefoundation/autoware and move to the directory.
 
 ```bash
@@ -149,8 +178,10 @@ If you are installing Autoware for the first time, you can automatically install
 ./setup-dev-env.sh
 ```
 
-## How to set up a workspace
-### Create the `src` directory and clone repositories into it.
+### How to set up a workspace
+
+#### Create the `src` directory and clone repositories into it.
+
 Autoware uses `vcs2l` to construct workspaces.
 
 ```bash
@@ -177,7 +208,7 @@ Optionally, you may also download the extra repositories that contain drivers fo
 vcs import src < repositories/extra-packages.repos
 ```
 
-### Install dependent ROS packages.
+#### Install dependent ROS packages.
 Autoware requires some ROS 2 packages in addition to the core components. The tool rosdep allows an automatic search and installation of such dependencies. You might need to run rosdep update before rosdep install.
 
 ```bash
@@ -197,7 +228,7 @@ rosdep update
 rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO
 ```
 
-### Install and set up ccache to speed up consecutive builds. (optional but highly recommended)
+#### Install and set up ccache to speed up consecutive builds. (optional but highly recommended)
 Ccache is a compiler cache that can significantly speed up recompilation by caching previous compilations and reusing them when the same compilation is being done again. It's highly recommended for developers looking to optimize their build times, unless there's a specific reason to avoid it.
 
 Install Ccache
@@ -246,18 +277,20 @@ ccache -s
 
 This command displays the cache hit rate and other relevant statistics, helping you gauge the effectiveness of Ccache in your development workflow.
 
-# Install bridge in ubuntu 22.04 wsl
+## Install Bridge in Ubuntu 22.04 WSL
+
 The following steps are taken from this [reference](https://autowarefoundation.github.io/autoware_universe/main/simulator/autoware_carla_interface/) documentation.
 
 ### Install CARLA Python Package
+
 Install CARLA 0.9.15 ROS 2 Humble communication package
 
-Download [carla-0.9.15-cp310-cp310-linux_x86_64.whl](https://github.com/gezp/carla_ros/releases/tag/carla-0.9.15-ubuntu-22.04) in you windows desktop.
+Download [carla-0.9.15-cp310-cp310-linux_x86_64.whl](https://github.com/gezp/carla_ros/releases/tag/carla-0.9.15-ubuntu-22.04) on your Windows desktop.
 
 Open your Ubuntu 22.04 terminal and move the file in your home directory
 
 ```bash
-cp -p /mnt/c/Users/Utente/Desktop/carla-0.9.15-cp310-cp310-linux_x86_64.whl ~
+cp -p /mnt/c/Users/<YourUsername>/Desktop/carla-0.9.15-cp310-cp310-linux_x86_64.whl ~
 ```
 
 Install the wheel with pip
@@ -267,13 +300,12 @@ pip install carla-0.9.15-cp310-cp310-linux_x86_64.whl
 
 Remove the wheel
 
-Install the wheel with pip
 ```bash
 rm -rf carla-0.9.15-cp310-cp310-linux_x86_64.whl
 ```
 
 ### Download CARLA Lanelet2 Maps
-Download `point_cloud/Town01.pcd` and `vector_maps/lanelet2/Town01.osm` y-axis inverted maps from [CARLA Autoware Contents](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/) in your Windows os.
+Download `point_cloud/Town01.pcd` and `vector_maps/lanelet2/Town01.osm` y-axis inverted maps from [CARLA Autoware Contents](https://bitbucket.org/carla-simulator/autoware-contents/src/master/maps/) in your Windows OS.
 
 Rename `point_cloud/Town01.pcd` → `pointcloud_map.pcd`
 
@@ -285,7 +317,7 @@ Create a `map_projector_info.yaml` file with:
 projector_type: Local
 ```
 
-Open your wsl Ubuntu 22.04 terminal and create the map folder 
+Open your WSL Ubuntu 22.04 terminal and create the map folder 
 
 ```bash
 mkdir -p ~/autoware/autoware_map/Town01/
@@ -294,19 +326,20 @@ mkdir -p ~/autoware/autoware_map/Town01/
 Move the files to this new location
 
 ```bash
-cp -p /mnt/c/Users/Utente/Desktop/pointcloud_map.pcd ~/autoware/autoware_map/Town01/
+cp -p /mnt/c/Users/<YourUsername>/Desktop/pointcloud_map.pcd ~/autoware/autoware_map/Town01/
 ```
 
 ```bash
-cp -p /mnt/c/Users/Utente/Desktop/lanelet2_map.osm ~/autoware/autoware_map/Town01/
+cp -p /mnt/c/Users/<YourUsername>/Desktop/lanelet2_map.osm ~/autoware/autoware_map/Town01/
 ```
 
 ```bash
-cp -p /mnt/c/Users/Utente/Desktop/map_projector_info.yaml ~/autoware/autoware_map/Town01/
+cp -p /mnt/c/Users/<YourUsername>/Desktop/map_projector_info.yaml ~/autoware/autoware_map/Town01/
 ```
 
 ## Build
-To build autoware bridge run the following commands
+
+To build Autoware bridge run the following commands.
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -354,7 +387,7 @@ You may just call the following command to enable multicast on the loopback inte
 sudo ip link set lo multicast on
 ```
 
-**This will be reverted once the computer restarts. So it must be called every time.
+**This will be reverted once the computer restarts. So it must be called every time.**
 
 ### ROS_LOCALHOST_ONLY
 
@@ -366,7 +399,7 @@ Open your WSL2 terminal and run this command to search your `.bashrc` file:
 grep ROS_LOCALHOST_ONLY ~/.bashrc
 ```
 
-If it prints nothing you are good to go! The line is not in your file. Skip to Step 3 just to be safe.
+If it prints nothing you are good to go! The line is not in your file.
 
 If it prints `export ROS_LOCALHOST_ONLY=1` you need to remove or comment it out. The easiest way to edit the file in the terminal is using the nano text editor.
 
@@ -421,7 +454,7 @@ sudo sysctl -w net.ipv4.ipfrag_time=3  # in seconds, default is 30 s
 sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728  # 128 MiB, default is 256 KiB
 ```
 
-**This must be done everytime before launching autoware**
+**This must be done every time before launching Autoware.**
 
 Validate the sysctl settings
 
@@ -460,7 +493,7 @@ Save the following file as `cyclonedds.xml`
 Move it inside wsl
 
 ```bash
-cp -r /mnt/c/Users/Utente/Desktop/cyclonedds.xml ~
+cp -r /mnt/c/Users/<YourUsername>/Desktop/cyclonedds.xml ~
 ```
 
 On ROS 2 Jazzy, the default maximum Participant Index in rmw_cyclonedds_cpp is limited to around 32, which can cause a "Failed to find a free participant index for domain 0" error when running many nodes (e.g. planning simulator). Adding the `<Discovery>` section above with `ParticipantIndex` set to `none` avoids this error.
@@ -502,7 +535,7 @@ export RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity} {time}] [{name}]: {message} ({
 For more options, see [here](https://docs.ros.org/en/rolling/Tutorials/Demos/Logging-and-logger-configuration.html#console-output-formatting).
 
 
-### Colorized GoogleTest output
+#### Colorized GoogleTest output
 Add 
 
 ```bash
@@ -515,7 +548,7 @@ For more details, refer to [Advanced GoogleTest Topics: Colored Terminal Output]
 
 This is useful when running tests with colcon test.
 
-## Configure the autoware_carla_interface
+### Configure the autoware_carla_interface
 
 By default, the interface expects the CARLA server to be running on `localhost:2000`. You need to point it to your Windows host IP.
 
@@ -578,7 +611,7 @@ Source your workspace to apply the changes:
 source install/setup.bash
 ```
 
-## Set up Windows workspace
+## Set up Windows Workspace
 
 Open a terminal in your windows folder and create a Python environment using Python 3.10, then install the requirements
 
@@ -588,29 +621,29 @@ pip install -r .\requirements.txt
 
 *Note: Always source this environment when running python scripts from Windows.*
 
-## Set up Wsl workspace
+## Set up Ubuntu 22.04 WSL Workspace
 
-Open a new wsl terminal and copy the `autoware_tools.py` inside your autoware folder
+Open a new WSL terminal and copy the `autoware_tools.py` inside your autoware folder
 
 ```bash
-cp -r /mnt/c/Users/Utente/Desktop/univaq-avv-carla-autoware/autoware_tools.py ~/autoware
+cp -r /mnt/c/Users/<YourUsername>/Desktop/univaq-avv-carla-autoware/autoware_tools.py ~/autoware
 ```
 
 ## Run
 
-1. In windows go to you carla directory
+1. In Windows go to your CARLA directory
 
 ```cmd
-cd C:\Users\Utente\Documents\CARLA_0.9.15\WindowsNoEditor
+cd C:\Users\<YourUsername>\Documents\CARLA_0.9.15\WindowsNoEditor
 ```
 
-2. Run carla, change map, spawn object if you need
+2. Run CARLA, change map, spawn object if you need
 
 ```cmd
 ./CarlaUE4.exe -prefernvidia -quality-level=Low -RenderOffScreen
 ```
 
-**If you omit `-RenderOffScreen` you can see carla window popping up**
+**If you omit `-RenderOffScreen` you can see the CARLA window popping up**
 
 If you want the CARLA spectator camera to automatically track the Autoware vehicle as it drives, open a **new Windows Command Prompt**, navigate to your script folder, source the python environment and run `follow_camera.py` tool
 
@@ -651,7 +684,7 @@ You can tweak the exact position and update speed using the following arguments:
 python follow_camera.py --offset-back 5.0 --offset-z 2.0
 ```
 
-3. Open a wsl terminal, set up the environment
+3. Open a WSL terminal, set up the environment
 
 ```bash
 cd ~/autoware
@@ -739,7 +772,7 @@ ros2 launch autoware_launch logging_simulator.launch.xml map_path:=$HOME/autowar
 
 3. RViz will immediately pop back open with your map loaded.
 
-3. In a new WSL2 terminal, run:
+4. In a new WSL2 terminal, run:
 
 ```bash
 python3 autoware_tools.py replay --bag your_bag_folder
