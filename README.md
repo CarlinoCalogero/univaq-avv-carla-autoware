@@ -618,3 +618,91 @@ ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware/au
 7. Wait for planning
 
 8. Engage
+
+## CARLA Unified Tools (`carla_tools.py`)
+
+A unified Command Line Interface (CLI) tool for recording, replaying, and analyzing CARLA simulations. This tool simplifies the CARLA Python API into a single script, automatically managing file paths and organizing your logs into a clean `recordings/carla/` directory.
+
+### Basic Usage
+
+The basic syntax is:
+
+```cmd
+python carla_tools.py [global_args] <command> [command_args]
+```
+
+### Global Arguments
+
+These arguments can be applied to any command. If your CARLA server is running locally on default ports, you can omit them.
+
+* `--host`: The IP address of the CARLA Server (Default: `localhost`).
+
+* `--port`: The port of the CARLA Server (Default: `2000`).
+
+Example:
+
+```cmd
+python carla_tools.py --host 172.x.x.x --port 2000 record
+```
+
+### Commands
+
+1. `record`
+
+Starts a new recording of the current CARLA simulation. The script will display a live timer. Press `Ctrl+C` to stop recording and save the file. Files are automatically timestamped (e.g., `my_snapshot_2026-04-19_20-52-45.log`).
+
+Arguments:
+
+* `--additional_data`: (Optional) Flag to include extended physics, bounding boxes, and traffic light data.
+
+Example:
+
+```cmd
+python carla_tools.py record --additional_data
+```
+
+2. `replay`
+
+Replays a previously saved `.log` file inside the CARLA simulator.
+
+Arguments:
+
+* `--recording`: **(Required)** The name of the `.log` file to replay.
+
+* `--start`: (Optional) Time in seconds to start the playback (Default: `0.0`).
+
+* `--duration`: (Optional) Seconds to playback. `0` plays the entire recording (Default: `0.0`).
+
+* `--time_factor`: (Optional) Playback speed multiplier. `2.0` is 2x speed (Default: `1.0`).
+
+* `--camera`: (Optional) ID of the actor to focus the camera on. `0` allows free movement (Default: `0`).
+
+Example:
+
+```cmd
+python carla_tools.py replay --recording my_snapshot_2026-04-19_20-52-45.log --time_factor 1.5
+```
+
+3. `info`
+
+Extracts the data from a binary `.log` file and saves it as a human-readable text file (`.txt`) for analysis. The text file is saved in the same directory as the log.
+
+Arguments:
+
+* `--recording`: **(Required)** The name of the `.log` file to parse.
+
+* `--show_all`: (Optional) Flag to dump massive, detailed frame-by-frame data. If omitted, generates a quick summary instead.
+
+### Example (Summary):
+
+```cmd
+python carla_tools.py info --recording my_snapshot_2026-04-19_20-52-45.log
+# Saves as: my_snapshot_2026-04-19_20-52-45_summary.txt
+```
+
+### Example (Detailed Dump):
+
+```cmd
+python carla_tools.py info --recording my_snapshot_2026-04-19_20-52-45.log --show_all
+# Saves as: my_snapshot_2026-04-19_20-52-45_detailed.txt
+```
