@@ -16,6 +16,7 @@ A complete, cross-platform development environment bridging the CARLA simulator 
 11. [Data Collection & Synchronization](#data-collection--synchronization-sync_recordbat)
 12. [Replaying Scenarios](#replaying-scenarios)
 13. [CLI Tools Reference](#cli-tools-reference)
+14. [Multiple Agents](#multiple-agents)
 
 ---
 
