@@ -823,3 +823,23 @@ python3 autoware_tools.py info --bag <bag_folder_name>
 ```
 
 * `--bag`: **(Required)** The exact name of the bag folder to parse.
+
+## Multiple Agents
+
+### Other cars driving around the ego vehicle
+
+You can use CARLA's `generate_traffic.py` script to spawn dozens of AI-controlled cars and pedestrians.
+
+*Note: Source the Python environment before running the code*
+
+```cmd
+cd C:\Users\<YourUsername>\path\to\carla\CARLA_0.9.15\WindowsNoEditor\PythonAPI\examples
+python .\generate_traffic.py
+```
+
+Autoware will perceive them via its sensors and avoid them, but Autoware is only controlling your single ego vehicle.
+
+### Multiple autonomous vehicles running Autoware in the same world
+
+Historically, Autoware was strictly a single-agent system. However, very recently (early 2026), researchers published the **DMAVA (Distributed Multi-Autonomous Vehicle Architecture)**.
+Using DMAVA, you can now run multiple, independent Autoware Universe stacks—either on the same computer or distributed across a network—that all connect to the same simulation environment. To do this, each Autoware stack is launched under a unique ROS 2 "namespace" (e.g., `ego_vehicle_1`, `ego_vehicle_2`), and they communicate with the simulator using the **Zenoh** network protocol instead of default DDS **(also used in this project)**.
